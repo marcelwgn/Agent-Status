@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<winuiex:WindowEx
+    x:Class="AIStatusTray.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:AIStatusTray"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:winuiex="using:WinUIEx"
+    Title="AI-Status"
+    Closed="MainWindow_Closed"
+    IsAlwaysOnTop="True"
+    mc:Ignorable="d">
+
+    <Window.SystemBackdrop>
+        <winuiex:TransparentTintBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid
+        x:Name="Root"
+        Height="48"
+        Margin="0,0,0,0"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Top"
+        Background="Transparent"
+        BorderBrush="Blue"
+        BorderThickness="0">
+
+        <Grid.Resources>
+            <ResourceDictionary />
+        </Grid.Resources>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="WindowsLogo" Width="60" />
+            <ColumnDefinition x:Name="TaskbarButtons" Width="0" />
+            <ColumnDefinition x:Name="Mid" Width="*" />
+            <ColumnDefinition x:Name="ContentColumn" Width="Auto" />
+            <ColumnDefinition x:Name="TrayIcons" Width="400" />
+        </Grid.ColumnDefinitions>
+
+        <Border
+            Grid.Column="0"
+            BorderBrush="Blue"
+            BorderThickness="0" />
+        <Border
+            Grid.Column="1"
+            BorderBrush="Green"
+            BorderThickness="0" />
+
+        <ContentControl
+            x:Name="MainContent"
+            Grid.Column="3"
+            HorizontalAlignment="Right"
+            Background="Blue">
+            <local:BandsItemsControl x:Name="DeskbandsControl" Height="48" />
+        </ContentControl>
+
+        <Border
+            Grid.Column="4"
+            BorderBrush="Yellow"
+            BorderThickness="0" />
+
+    </Grid>
+</winuiex:WindowEx>

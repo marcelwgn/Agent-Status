@@ -1,0 +1,12 @@
+SetForegroundWindow
+IsIconic
+ShowWindow
+BringWindowToTop
+FindWindow
+FindWindowEx
+SendInput
+INPUT
+KEYBDINPUT
+INPUT_TYPE
+KEYBD_EVENT_FLAGS
+VIRTUAL_KEY
