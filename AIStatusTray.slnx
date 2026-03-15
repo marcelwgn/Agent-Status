@@ -7,7 +7,7 @@
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
   </Project>
-  <Project Path="AIStatusTray.Package/AIStatusTray.Package.wapproj" Type="{A5A43C5B-DE2A-4C0C-9213-0A381AF9435A}">
+  <Project Path="AIStatusTray.Package/AIStatusTray.Package.wapproj" Type="{C7167F3B-7146-4C97-8BFC-174509AAD9DD}">
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
     <Deploy />
