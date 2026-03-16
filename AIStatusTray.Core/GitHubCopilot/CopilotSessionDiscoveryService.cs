@@ -18,6 +18,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
     private readonly object _sessionsLock = new();
     private FileSystemWatcher? _watcher;
     private FileSystemWatcher? _lockWatcher;
+    private Timer? _livenessTimer;
     private int _fileChangePending;
     private bool _disposed;
 
@@ -44,6 +45,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
     public CopilotSessionDiscoveryService()
     {
         StartFileWatcher();
+        _livenessTimer = new Timer(_ => CheckProcessLiveness(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         _ = Task.Run(PollSessions);
     }
 
@@ -117,6 +119,45 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 Interlocked.Exchange(ref _fileChangePending, 0);
                 PollSessions();
             });
+        }
+    }
+
+    /// <summary>
+    /// Lightweight periodic check: if any tracked session's process has exited,
+    /// trigger a full repoll so the session is removed promptly.
+    /// </summary>
+    private void CheckProcessLiveness()
+    {
+        try
+        {
+            bool anyExited = false;
+            lock (_sessionsLock)
+            {
+                foreach (CopilotSessionInfo info in _sessions.Values)
+                {
+                    try
+                    {
+                        using Process proc = Process.GetProcessById(info.CopilotPid);
+                        if (proc.HasExited)
+                        {
+                            anyExited = true;
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        anyExited = true;
+                        break;
+                    }
+                }
+            }
+
+            if (anyExited)
+                PollSessions();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"CheckProcessLiveness error: {ex.Message}");
         }
     }
 
@@ -224,9 +265,13 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 }
             }
 
-            // Strategy 2: scan lock files for sessions not found via --resume
+            // Strategy 2: scan lock files for sessions not found via --resume.
+            // Track claimed PIDs to prevent stale lock files from matching
+            // a different copilot.exe instance through PID reuse.
             if (Directory.Exists(SessionStatePath))
             {
+                HashSet<int> claimedPids = new(result.Values.Select(v => v.Item1));
+
                 foreach (string sessionDir in Directory.EnumerateDirectories(SessionStatePath))
                 {
                     string sessionId = Path.GetFileName(sessionDir);
@@ -239,9 +284,11 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     {
                         Match lockMatch = LockFilePidRegex().Match(Path.GetFileName(lockFile));
                         if (lockMatch.Success && int.TryParse(lockMatch.Groups[1].Value, out int lockPid)
+                            && !claimedPids.Contains(lockPid)
                             && runningPids.TryGetValue(lockPid, out string? cmdLine))
                         {
                             result[sessionId] = (lockPid, cmdLine);
+                            claimedPids.Add(lockPid);
                             break;
                         }
                     }
@@ -692,6 +739,8 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _livenessTimer?.Dispose();
+        _livenessTimer = null;
         if (_watcher != null)
         {
             _watcher.EnableRaisingEvents = false;
