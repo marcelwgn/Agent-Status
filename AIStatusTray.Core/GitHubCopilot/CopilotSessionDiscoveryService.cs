@@ -375,6 +375,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
             string? lastIntent = null;
             string? lastMode = null;
             string? lastAssistantMessageLine = null;
+            bool sawTaskComplete = false;
 
             HashSet<string> stateDefiningTypes = new()
             {
@@ -413,6 +414,9 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                             lastMode = mode;
                     }
 
+                    if (line.Contains("\"type\":\"session.task_complete\""))
+                        sawTaskComplete = true;
+
                     if (line.Contains("\"type\":\"tool.execution_complete\""))
                     {
                         string? toolCallId = ExtractJsonValue(line, "toolCallId");
@@ -445,6 +449,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
                     if (line.Contains("\"type\":\"user.message\""))
                     {
+                        sawTaskComplete = false;
                         string? content = ExtractJsonValue(line, "content");
                         if (content != null)
                             lastUserMessage = content;
@@ -470,6 +475,12 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 return;
 
             info.State = DeriveStateFromEvent(lastStateLine ?? lastLine);
+
+            // task_complete is followed by hook/tool cleanup events and
+            // assistant.turn_end, which would otherwise override the state
+            // to Idle. Restore Done when no new user.message followed.
+            if (sawTaskComplete && info.State != AISessionState.Thinking)
+                info.State = AISessionState.Done;
 
             if (info.State == AISessionState.Working && lastStateLine != null &&
                 lastStateLine.Contains("\"type\":\"tool.execution_complete\""))
