@@ -19,7 +19,6 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
 $projectDir = Join-Path $repoRoot 'AIStatusTray'
 $csproj = Join-Path $projectDir 'AIStatusTray.csproj'
-$manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
 $publisher = 'CN=marcelwagner'
@@ -113,20 +112,22 @@ foreach ($arch in $architectures) {
         continue
     }
 
-    # Create AppX layout from build output
+    # Create AppX layout from build output (includes correct AppxManifest.xml and resources.pri)
     $buildOutput = Join-Path $projectDir "bin\$platform\Debug\$tfm\$rid"
     $appxDir = Join-Path $publishDir "_layout_$label"
     if (Test-Path $appxDir) { Remove-Item $appxDir -Recurse -Force }
     New-Item $appxDir -ItemType Directory | Out-Null
     Copy-Item "$buildOutput\*" $appxDir -Recurse -Force
-    Copy-Item $manifestPath (Join-Path $appxDir 'AppxManifest.xml') -Force
+
+    # Copy store images into layout
     $layoutImages = Join-Path $appxDir 'Images'
     if (-not (Test-Path $layoutImages)) { New-Item $layoutImages -ItemType Directory | Out-Null }
     Copy-Item "$imagesDir\*" $layoutImages -Force
 
-    if (-not (Test-Path $appxDir)) {
-        Write-Warning "AppX layout not found at: $appxDir. Skipping $label."
-        continue
+    # Create unqualified copies from scale-100 variants so the manifest references resolve
+    Get-ChildItem $layoutImages -Filter '*.scale-100.png' | ForEach-Object {
+        $baseName = $_.Name -replace '\.scale-100\.png$', '.png'
+        Copy-Item $_.FullName (Join-Path $layoutImages $baseName)
     }
 
     # Package as MSIX

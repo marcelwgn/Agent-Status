@@ -128,18 +128,21 @@ foreach ($arch in $architectures) {
 
     Write-Host "Creating AppX layout for $label..." -ForegroundColor Cyan
 
-    # Copy build output
+    # Copy build output (includes correct AppxManifest.xml and resources.pri)
     Copy-Item "$buildOutput\*" $layoutDir -Recurse -Force
 
-    # Copy manifest as AppxManifest.xml
-    Copy-Item $manifestPath (Join-Path $layoutDir 'AppxManifest.xml') -Force
-
-    # Copy store images
+    # Copy store images into layout
     $layoutImages = Join-Path $layoutDir 'Images'
     if (-not (Test-Path $layoutImages)) {
         New-Item $layoutImages -ItemType Directory | Out-Null
     }
     Copy-Item "$imagesDir\*" $layoutImages -Force
+
+    # Create unqualified copies from scale-100 variants so the manifest references resolve
+    Get-ChildItem $layoutImages -Filter '*.scale-100.png' | ForEach-Object {
+        $baseName = $_.Name -replace '\.scale-100\.png$', '.png'
+        Copy-Item $_.FullName (Join-Path $layoutImages $baseName)
+    }
 
     # Pack into MSIX (unsigned)
     $msixPath = Join-Path $msixDir "AIStatusTray_$label.msix"
@@ -161,8 +164,14 @@ if ($builtCount -eq 0) {
 
 # --- Create bundle ---
 Write-Host "`n========== Creating MSIX Bundle ==========" -ForegroundColor Cyan
+
+# Read version from the first layout's manifest so the bundle version matches
+$firstLayout = Get-ChildItem $tempRoot -Directory -Filter 'layout_*' | Select-Object -First 1
+[xml]$layoutManifest = Get-Content (Join-Path $firstLayout.FullName 'AppxManifest.xml')
+$bundleVersion = $layoutManifest.Package.Identity.Version
+
 $bundlePath = Join-Path $publishDir 'AIStatusTray.msixbundle'
-& $makeAppx bundle /d $msixDir /p $bundlePath /o
+& $makeAppx bundle /d $msixDir /p $bundlePath /bv $bundleVersion /o
 if ($LASTEXITCODE -ne 0) {
     Write-Error "MakeAppx bundle failed."
     exit 1
