@@ -32,8 +32,12 @@ public sealed class CopilotUISessionManager : IUISessionManager
 
     private void SyncViewModels()
     {
+        // Snapshot to avoid concurrent modification — the Core manager
+        // mutates Sessions on a thread-pool thread.
+        List<AISessionInfo> snapshot = [.. _coreManager.Sessions];
+
         // Build set of current Core sessions
-        HashSet<AISessionInfo> current = [.. _coreManager.Sessions];
+        HashSet<AISessionInfo> current = [.. snapshot];
 
         // Remove stale VMs
         List<AISessionInfo> toRemove = _vmMap.Keys.Where(k => !current.Contains(k)).ToList();
@@ -47,7 +51,7 @@ public sealed class CopilotUISessionManager : IUISessionManager
         }
 
         // Add or update VMs
-        foreach (AISessionInfo info in _coreManager.Sessions)
+        foreach (AISessionInfo info in snapshot)
         {
             if (_vmMap.TryGetValue(info, out CopilotCommandViewModel? existing))
             {
