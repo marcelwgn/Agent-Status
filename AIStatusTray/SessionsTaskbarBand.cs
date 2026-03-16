@@ -60,6 +60,7 @@ public sealed class SessionsTaskbarBand : TaskbarItemViewModel, IDisposable
         }
 
         int count = Buttons.Count;
+        IsEmpty = count == 0;
         Subtitle = count switch
         {
             0 => "No sessions",

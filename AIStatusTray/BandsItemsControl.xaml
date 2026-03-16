@@ -99,6 +99,30 @@
                                 Spacing="4" />
                         </ItemsRepeater.Layout>
                     </ItemsRepeater>
+
+                    <!--  Fallback shown when no AI sessions are active  -->
+                    <StackPanel
+                        Grid.ColumnSpan="2"
+                        Height="48"
+                        Padding="8,0"
+                        VerticalAlignment="Center"
+                        Opacity="0.6"
+                        Orientation="Horizontal"
+                        Spacing="6"
+                        ToolTipService.ToolTip="{x:Bind Subtitle, Mode=OneWay}"
+                        Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="14"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Glyph="&#xE9D5;" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Subtitle, Mode=OneWay}" />
+                    </StackPanel>
                 </Grid>
             </DataTemplate>
 

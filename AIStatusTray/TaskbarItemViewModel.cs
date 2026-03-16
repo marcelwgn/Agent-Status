@@ -63,6 +63,9 @@ namespace AIStatusTray
 
         [ObservableProperty]
         public partial bool IsEnabled { get; set; } = true;
+
+        [ObservableProperty]
+        public partial bool IsEmpty { get; set; } = true;
     }
 
     public partial class CommandViewModel : ObservableObject, ICommand
