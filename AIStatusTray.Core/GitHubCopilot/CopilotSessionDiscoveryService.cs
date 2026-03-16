@@ -384,6 +384,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 "assistant.turn_end", "assistant.turn_start", "assistant.message",
                 "hook.start", "hook.end",
                 "subagent.started", "subagent.completed", "subagent.failed",
+                "abort",
             };
 
             using (FileStream fs = new(eventsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
