@@ -192,19 +192,24 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                         changed = true;
 
                         PopulateProcessTree(info);
-                        ReadWorkspaceMetadata(info);
                     }
-                    else if (string.IsNullOrEmpty(info.Cwd) && string.IsNullOrEmpty(info.Repository))
-                    {
-                        ReadWorkspaceMetadata(info);
-                        if (!string.IsNullOrEmpty(info.Cwd) || !string.IsNullOrEmpty(info.Repository))
-                            changed = true;
-                    }
+
+                    // Re-read workspace metadata every poll so summary/branch
+                    // updates are picked up promptly.
+                    string oldSummary = info.Summary;
+                    string oldBranch = info.Branch;
+                    ReadWorkspaceMetadata(info);
+                    if (info.Summary != oldSummary || info.Branch != oldBranch)
+                        changed = true;
 
                     AISessionState oldState = info.State;
                     AISessionMode oldMode = info.Mode;
+                    string? oldIntent = info.CurrentIntent;
+                    string? oldPendingQuestion = info.PendingQuestion;
                     ReadSessionState(info);
-                    if (info.State != oldState || info.Mode != oldMode)
+                    if (info.State != oldState || info.Mode != oldMode
+                        || info.CurrentIntent != oldIntent
+                        || info.PendingQuestion != oldPendingQuestion)
                     {
                         changed = true;
                     }
@@ -266,12 +271,8 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
             }
 
             // Strategy 2: scan lock files for sessions not found via --resume.
-            // Track claimed PIDs to prevent stale lock files from matching
-            // a different copilot.exe instance through PID reuse.
             if (Directory.Exists(SessionStatePath))
             {
-                HashSet<int> claimedPids = new(result.Values.Select(v => v.Item1));
-
                 foreach (string sessionDir in Directory.EnumerateDirectories(SessionStatePath))
                 {
                     string sessionId = Path.GetFileName(sessionDir);
@@ -284,11 +285,9 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     {
                         Match lockMatch = LockFilePidRegex().Match(Path.GetFileName(lockFile));
                         if (lockMatch.Success && int.TryParse(lockMatch.Groups[1].Value, out int lockPid)
-                            && !claimedPids.Contains(lockPid)
                             && runningPids.TryGetValue(lockPid, out string? cmdLine))
                         {
                             result[sessionId] = (lockPid, cmdLine);
-                            claimedPids.Add(lockPid);
                             break;
                         }
                     }
