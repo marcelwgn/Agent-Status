@@ -9,10 +9,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$outputDir = Join-Path $PSScriptRoot "AIStatusTray.CmdPalExtension\bin\$Platform\$Configuration\net9.0-windows10.0.26100.0\win-$($Platform.ToLower())"
-$manifestSource = Join-Path $PSScriptRoot "AIStatusTray.CmdPalExtension\Package.appxmanifest"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$outputDir = Join-Path $repoRoot "AIStatusTray.CmdPalExtension\bin\$Platform\$Configuration\net9.0-windows10.0.26100.0\win-$($Platform.ToLower())"
+$manifestSource = Join-Path $repoRoot "AIStatusTray.CmdPalExtension\Package.appxmanifest"
 $manifestDest = Join-Path $outputDir "AppxManifest.xml"
-$assetsSource = Join-Path $PSScriptRoot "AIStatusTray.CmdPalExtension\Assets"
+$assetsSource = Join-Path $repoRoot "AIStatusTray.CmdPalExtension\Assets"
 
 if (-not (Test-Path (Join-Path $outputDir "AIStatusTray.CmdPalExtension.exe"))) {
     Write-Error "Build output not found at $outputDir. Build the solution first."

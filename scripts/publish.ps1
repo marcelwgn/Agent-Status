@@ -16,11 +16,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
 $projectDir = Join-Path $repoRoot 'AIStatusTray'
-$packageDir = Join-Path $repoRoot 'AIStatusTray.Package'
+$csproj = Join-Path $projectDir 'AIStatusTray.csproj'
+$manifestPath = Join-Path $projectDir 'Package.appxmanifest'
+$imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
-$wapproj = Join-Path $packageDir 'AIStatusTray.Package.wapproj'
 $publisher = 'CN=marcelwagner'
 $tfm = 'net9.0-windows10.0.26100.0'
 
@@ -100,22 +101,29 @@ foreach ($arch in $architectures) {
 
     Write-Host "`nBuilding for $label..." -ForegroundColor Cyan
 
-    # Build via the packaging project (produces AppX layout with manifest)
-    dotnet build $wapproj `
+    # Build the project directly
+    dotnet build $csproj `
         -c Debug `
-        -p:Platform=$platform
+        -p:Platform=$platform `
+        -r $rid `
+        --self-contained
 
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Build failed for $label (Windows SDK may be required for cross-compilation). Skipping."
         continue
     }
 
-    # The AppX layout directory from the packaging project
-    $appxDir = Join-Path $packageDir "bin\$platform\Debug\AppX"
-    if (-not (Test-Path $appxDir)) {
-        # Fallback: check alternate layout paths
-        $appxDir = Join-Path $packageDir "AppPackages"
-    }
+    # Create AppX layout from build output
+    $buildOutput = Join-Path $projectDir "bin\$platform\Debug\$tfm\$rid"
+    $appxDir = Join-Path $publishDir "_layout_$label"
+    if (Test-Path $appxDir) { Remove-Item $appxDir -Recurse -Force }
+    New-Item $appxDir -ItemType Directory | Out-Null
+    Copy-Item "$buildOutput\*" $appxDir -Recurse -Force
+    Copy-Item $manifestPath (Join-Path $appxDir 'AppxManifest.xml') -Force
+    $layoutImages = Join-Path $appxDir 'Images'
+    if (-not (Test-Path $layoutImages)) { New-Item $layoutImages -ItemType Directory | Out-Null }
+    Copy-Item "$imagesDir\*" $layoutImages -Force
+
     if (-not (Test-Path $appxDir)) {
         Write-Warning "AppX layout not found at: $appxDir. Skipping $label."
         continue
@@ -149,7 +157,7 @@ if ($builtCount -eq 0) {
 }
 
 # --- Copy install script ---
-$installScript = Join-Path $repoRoot 'install.ps1'
+$installScript = Join-Path $repoRoot 'scripts' 'install.ps1'
 Copy-Item $installScript $publishDir
 
 # --- Create zip ---
@@ -159,7 +167,8 @@ $filesToZip = Get-ChildItem $publishDir -File | Where-Object { $_.Name -ne 'AISt
 Compress-Archive -Path $filesToZip.FullName -DestinationPath $zipPath -Force
 Write-Host "Zip created: $zipPath" -ForegroundColor Green
 
-# --- Cleanup signing cert from personal store ---
+# --- Cleanup temp layout directories and signing cert ---
+Get-ChildItem $publishDir -Directory -Filter '_layout_*' | Remove-Item -Recurse -Force
 Remove-Item "Cert:\CurrentUser\My\$certThumbprint" -ErrorAction SilentlyContinue
 
 Write-Host "`nDone! Share publish\AIStatusTray.zip with your colleague." -ForegroundColor Green
