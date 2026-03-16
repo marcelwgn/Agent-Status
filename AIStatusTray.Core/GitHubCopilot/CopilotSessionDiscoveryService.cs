@@ -214,6 +214,19 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                         changed = true;
                     }
                 }
+
+                // Remove completed/shutdown sessions whose process is still
+                // alive serving other sessions — their lock files linger but
+                // they should no longer appear as active.
+                List<string> done = _sessions
+                    .Where(kv => kv.Value.State == AISessionState.Done)
+                    .Select(kv => kv.Key)
+                    .ToList();
+                foreach (string id in done)
+                {
+                    _sessions.Remove(id);
+                    changed = true;
+                }
             }
 
             if (changed)
