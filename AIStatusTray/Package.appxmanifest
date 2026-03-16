@@ -34,7 +34,7 @@
 	<Applications>
 		<Application Id="App"
 		  Executable="AIStatusTray.exe"
-		  EntryPoint="AIStatusTray.App">
+		  EntryPoint="Windows.FullTrustApplication">
 			<uap:VisualElements
 			  DisplayName="AI-Status-Tray"
 			  Description="AI status taskbar band"
