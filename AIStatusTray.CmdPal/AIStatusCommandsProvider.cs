@@ -10,7 +10,7 @@ public partial class AIStatusCommandsProvider : CommandProvider
     public AIStatusCommandsProvider()
     {
         DisplayName = "AI-Status-Tray";
-        Icon = new IconInfo("\uE9D5"); // Robot icon
+        Icon = SessionIcons.Provider;
     }
 
     public override ICommandItem[] TopLevelCommands()

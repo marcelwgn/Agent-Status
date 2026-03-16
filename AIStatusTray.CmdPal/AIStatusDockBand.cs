@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AIStatusTray.Core.Common;
@@ -21,7 +20,7 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
     public AIStatusDockBand()
         : base([], "com.aistatus.sessions", "AI-Status-Tray")
     {
-        Icon = new IconInfo("\uE9D5");
+        Icon = SessionIcons.Provider;
 
         _copilotManager = new CopilotSessionManager();
         _claudeManager = new ClaudeCodeSessionManager();
@@ -47,7 +46,7 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
             {
                 Title = session.DisplayName,
                 Subtitle = FormatState(session),
-                Icon = GetIconForState(session.State),
+                Icon = SessionIcons.GetIconForState(session.State),
             });
         }
 
@@ -57,7 +56,7 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
             {
                 Title = session.DisplayName,
                 Subtitle = FormatState(session),
-                Icon = GetIconForState(session.State),
+                Icon = SessionIcons.GetIconForState(session.State),
             });
         }
 
@@ -84,17 +83,6 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
 
         return state;
     }
-
-    private static IconInfo GetIconForState(AISessionState state) => state switch
-    {
-        AISessionState.Idle => new IconInfo("\uE8BD"),
-        AISessionState.Thinking => new IconInfo("\uE9CE"),
-        AISessionState.Working => new IconInfo("\uE9F5"),
-        AISessionState.ExecutingTool => new IconInfo("\uE90F"),
-        AISessionState.WaitingForUser => new IconInfo("\uEA39"),
-        AISessionState.Done => new IconInfo("\uE930"),
-        _ => new IconInfo("\uE946"),
-    };
 }
 
 /// <summary>
@@ -108,7 +96,7 @@ internal sealed partial class SessionFocusCommand : InvokableCommand
     {
         _session = session;
         Name = $"Focus {session.DisplayName}";
-        Icon = GetIconForState(session.State);
+        Icon = SessionIcons.GetIconForState(session.State);
     }
 
     public override ICommandResult Invoke()
@@ -116,15 +104,4 @@ internal sealed partial class SessionFocusCommand : InvokableCommand
         Task.Run(() => ShowWindowHelper.BringToFront(_session.ShellPid));
         return CommandResult.Dismiss();
     }
-
-    private static IconInfo GetIconForState(AISessionState state) => state switch
-    {
-        AISessionState.Idle => new IconInfo("\uE8BD"),
-        AISessionState.Thinking => new IconInfo("\uE9CE"),
-        AISessionState.Working => new IconInfo("\uE9F5"),
-        AISessionState.ExecutingTool => new IconInfo("\uE90F"),
-        AISessionState.WaitingForUser => new IconInfo("\uEA39"),
-        AISessionState.Done => new IconInfo("\uE930"),
-        _ => new IconInfo("\uE946"),
-    };
 }

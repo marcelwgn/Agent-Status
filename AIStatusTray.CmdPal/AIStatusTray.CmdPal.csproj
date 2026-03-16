@@ -31,6 +31,14 @@
 		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
 		<Content Include="Assets\StoreLogo.png" />
 		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+		<Content Include="Assets\Icons\idle.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\thinking.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\working.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\executing.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\waiting.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\done.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\unknown.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\provider.svg" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>
