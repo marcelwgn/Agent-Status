@@ -39,6 +39,12 @@ internal sealed partial class TrayIconService
                 _window = new Window();
                 _hwnd = new HWND(WindowNative.GetWindowHandle(_window));
 
+                // Prevent the helper window from appearing on the taskbar
+                var exStyle = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+                exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW;
+                exStyle &= ~WINDOW_EX_STYLE.WS_EX_APPWINDOW;
+                PInvoke.SetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
+
                 _trayWndProc = WindowProc;
                 nint hotKeyPrcPointer = Marshal.GetFunctionPointerForDelegate(_trayWndProc);
                 _originalWndProc = Marshal.GetDelegateForFunctionPointer<WNDPROC>(PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, hotKeyPrcPointer));

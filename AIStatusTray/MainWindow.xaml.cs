@@ -174,6 +174,13 @@ namespace AIStatusTray
             nowAddChild &= ~(WINDOW_STYLE.WS_CAPTION | WINDOW_STYLE.WS_THICKFRAME);
 
             PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)nowAddChild);
+
+            // Prevent this window from appearing as a regular app on the taskbar
+            WINDOW_EX_STYLE exStyle = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW;
+            exStyle &= ~WINDOW_EX_STYLE.WS_EX_APPWINDOW;
+            PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
+
             PInvoke.SetParent(thisWindow, taskbarWindow);
 
             RECT taskbarRect = new();

@@ -14,6 +14,7 @@ GetWindowLong
 GetWindowLongPtr
 SetWindowLong
 WINDOW_STYLE
+WINDOW_EX_STYLE
 SetParent
 SetWindowRgn
 CreateRectRgn
