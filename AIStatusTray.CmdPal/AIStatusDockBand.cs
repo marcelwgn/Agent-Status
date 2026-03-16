@@ -1,10 +1,13 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using AIStatusTray.Core.Common;
 using AIStatusTray.Core.GitHubCopilot;
 using AIStatusTray.Core.ClaudeCode;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 
-namespace AIStatusTray.CmdPalExtension;
+namespace AIStatusTrayCmdPal;
 
 /// <summary>
 /// Dock band that shows live AI session status in the Command Palette dock.
@@ -16,7 +19,7 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
     private readonly ClaudeCodeSessionManager _claudeManager;
 
     public AIStatusDockBand()
-        : base([], "com.aistatus.sessions", "AI Sessions")
+        : base([], "com.aistatus.sessions", "AI-Status-Tray")
     {
         Icon = new IconInfo("\uE9D5");
 

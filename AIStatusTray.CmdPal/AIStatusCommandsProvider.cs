@@ -1,7 +1,7 @@
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 
-namespace AIStatusTray.CmdPalExtension;
+namespace AIStatusTrayCmdPal;
 
 public partial class AIStatusCommandsProvider : CommandProvider
 {
@@ -9,7 +9,7 @@ public partial class AIStatusCommandsProvider : CommandProvider
 
     public AIStatusCommandsProvider()
     {
-        DisplayName = "AI Status";
+        DisplayName = "AI-Status-Tray";
         Icon = new IconInfo("\uE9D5"); // Robot icon
     }
 

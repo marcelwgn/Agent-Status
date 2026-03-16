@@ -1,7 +1,9 @@
+using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.CommandPalette.Extensions;
 
-namespace AIStatusTray.CmdPalExtension;
+namespace AIStatusTrayCmdPal;
 
 [Guid("E92BABFA-7BAA-4391-9E99-E227DCFD28E2")]
 public sealed partial class AIStatusExtension : IExtension, IDisposable

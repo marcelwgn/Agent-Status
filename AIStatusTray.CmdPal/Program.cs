@@ -1,8 +1,10 @@
+using System;
+using System.Threading;
 using Microsoft.CommandPalette.Extensions;
 using Shmuelie.WinRTServer;
 using Shmuelie.WinRTServer.CsWinRT;
 
-namespace AIStatusTray.CmdPalExtension;
+namespace AIStatusTrayCmdPal;
 
 public class Program
 {

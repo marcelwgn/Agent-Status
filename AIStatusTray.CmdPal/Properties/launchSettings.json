@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "AIStatusTrayCmdPal (Package)": {
+      "commandName": "MsixPackage",
+      "doNotLaunchApp": true
+    },
+    "AIStatusTrayCmdPal (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

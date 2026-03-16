@@ -9,12 +9,12 @@
   IgnorableNamespaces="uap uap3 rescap">
 
   <Identity
-    Name="AIStatusTray.CmdPalExtension"
+    Name="AIStatusTray.CmdPal"
     Publisher="CN=marcelwagner"
     Version="1.0.0.0" />
 
   <Properties>
-    <DisplayName>AI Status</DisplayName>
+    <DisplayName>AI-Status-Tray</DisplayName>
     <PublisherDisplayName>marcelwagner</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -33,7 +33,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="AI Status"
+        DisplayName="AI-Status-Tray"
         Description="AI session status dock extension for Command Palette"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -44,8 +44,8 @@
       <Extensions>
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:ExeServer Executable="AIStatusTray.CmdPalExtension.exe" Arguments="-RegisterProcessAsComServer" DisplayName="AI Status">
-              <com:Class Id="E92BABFA-7BAA-4391-9E99-E227DCFD28E2" DisplayName="AI Status" />
+            <com:ExeServer Executable="AIStatusTray.CmdPal.exe" Arguments="-RegisterProcessAsComServer" DisplayName="AI-Status-Tray">
+              <com:Class Id="E92BABFA-7BAA-4391-9E99-E227DCFD28E2" DisplayName="AI-Status-Tray" />
             </com:ExeServer>
           </com:ComServer>
         </com:Extension>
@@ -53,7 +53,7 @@
           <uap3:AppExtension Name="com.microsoft.commandpalette"
             Id="AIStatusTray"
             PublicFolder="Public"
-            DisplayName="AI Status"
+            DisplayName="AI-Status-Tray"
             Description="Shows running AI coding sessions (GitHub Copilot, Claude Code) in the Command Palette dock">
             <uap3:Properties>
               <CmdPalProvider>
