@@ -215,18 +215,6 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     }
                 }
 
-                // Remove completed/shutdown sessions whose process is still
-                // alive serving other sessions — their lock files linger but
-                // they should no longer appear as active.
-                List<string> done = _sessions
-                    .Where(kv => kv.Value.State == AISessionState.Done)
-                    .Select(kv => kv.Key)
-                    .ToList();
-                foreach (string id in done)
-                {
-                    _sessions.Remove(id);
-                    changed = true;
-                }
             }
 
             if (changed)
@@ -304,6 +292,53 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                             break;
                         }
                     }
+                }
+            }
+
+            // When a PID maps to multiple sessions (e.g. stale --resume flag
+            // pointing at an old session while the lock file points at the
+            // current one), keep only the session with the most recent events.
+            Dictionary<int, List<string>> pidToSessions = new();
+            foreach ((string sessionId, (int pid, string _)) in result)
+            {
+                if (!pidToSessions.TryGetValue(pid, out List<string>? list))
+                {
+                    list = [];
+                    pidToSessions[pid] = list;
+                }
+                list.Add(sessionId);
+            }
+
+            foreach ((int _, List<string> sessionIds) in pidToSessions)
+            {
+                if (sessionIds.Count <= 1)
+                    continue;
+
+                string? bestSession = null;
+                DateTime bestTime = DateTime.MinValue;
+
+                foreach (string sid in sessionIds)
+                {
+                    string eventsPath = Path.Combine(SessionStatePath, sid, "events.jsonl");
+                    try
+                    {
+                        if (File.Exists(eventsPath))
+                        {
+                            DateTime lastWrite = File.GetLastWriteTimeUtc(eventsPath);
+                            if (lastWrite > bestTime)
+                            {
+                                bestTime = lastWrite;
+                                bestSession = sid;
+                            }
+                        }
+                    }
+                    catch { /* best-effort */ }
+                }
+
+                foreach (string sid in sessionIds)
+                {
+                    if (sid != bestSession)
+                        result.Remove(sid);
                 }
             }
         }
@@ -468,6 +503,9 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                             lastUserMessage = content;
                     }
 
+                    if (line.Contains("\"type\":\"session.resume\""))
+                        sawTaskComplete = false;
+
                     if (line.Contains("\"report_intent\"") && line.Contains("\"intent\":"))
                     {
                         string? intent = ExtractJsonValue(line, "intent");
@@ -477,6 +515,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
                     if (line.Contains("\"type\":\"session.mode_changed\""))
                     {
+                        sawTaskComplete = false;
                         string? newMode = ExtractJsonValue(line, "newMode");
                         if (newMode != null)
                             lastMode = newMode;
