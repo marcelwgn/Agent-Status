@@ -60,6 +60,15 @@ internal sealed partial class AIStatusDockBand : WrappedDockItem
             });
         }
 
+        if (items.Count == 0)
+        {
+            items.Add(new ListItem(new NoOpCommand())
+            {
+                Subtitle = "No sessions",
+                Icon = SessionIcons.NoSession,
+            });
+        }
+
         Items = items.ToArray();
     }
 
@@ -104,4 +113,17 @@ internal sealed partial class SessionFocusCommand : InvokableCommand
         Task.Run(() => ShowWindowHelper.BringToFront(_session.ShellPid));
         return CommandResult.Dismiss();
     }
+}
+
+/// <summary>
+/// No-op command used for placeholder items like "No session".
+/// </summary>
+internal sealed partial class NoOpCommand : InvokableCommand
+{
+    public NoOpCommand()
+    {
+        Name = "No sessions";
+    }
+
+    public override ICommandResult Invoke() => CommandResult.KeepOpen();
 }

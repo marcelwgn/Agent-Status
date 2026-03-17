@@ -39,6 +39,7 @@
 		<Content Include="Assets\Icons\done.svg" CopyToOutputDirectory="PreserveNewest" />
 		<Content Include="Assets\Icons\unknown.svg" CopyToOutputDirectory="PreserveNewest" />
 		<Content Include="Assets\Icons\provider.svg" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\Icons\no-session.svg" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>

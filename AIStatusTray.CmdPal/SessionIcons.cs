@@ -14,6 +14,7 @@ internal static class SessionIcons
     private static readonly string IconsDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Icons");
 
     public static IconInfo Provider { get; } = FromSvg("provider.svg");
+    public static IconInfo NoSession { get; } = FromSvg("no-session.svg");
 
     public static IconInfo GetIconForState(AISessionState state) => state switch
     {
