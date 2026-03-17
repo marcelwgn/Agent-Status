@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds AgentStatus.CmdPalExtension and creates an unsigned .msixbundle for Microsoft Store submission.
+    Builds AgentStatus.CmdPal and creates an unsigned .msixbundle for Microsoft Store submission.
 .DESCRIPTION
     1. Builds the CmdPal extension for each target architecture (x64, ARM64).
     2. Creates an AppX layout directory for each build (output + processed manifest + assets).
@@ -28,13 +28,13 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AgentStatus.CmdPalExtension'
-$csproj = Join-Path $projectDir 'AgentStatus.CmdPalExtension.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus.CmdPal'
+$csproj = Join-Path $projectDir 'AgentStatus.CmdPal.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $assetsDir = Join-Path $projectDir 'Assets'
 $publishDir = Join-Path $repoRoot 'publish'
 $tfm = 'net9.0-windows10.0.26100.0'
-$exeName = 'AgentStatus.CmdPalExtension'
+$exeName = 'AgentStatus.CmdPal'
 
 # --- Validate prerequisites ---
 if (-not (Test-Path $csproj)) {
@@ -170,7 +170,7 @@ foreach ($arch in $architectures) {
     Remove-Item $priconfigPath -ErrorAction SilentlyContinue
 
     # Pack into MSIX (unsigned)
-    $msixPath = Join-Path $msixDir "CmdPalExtension_$label.msix"
+    $msixPath = Join-Path $msixDir "AgentStatus.CmdPal_$label.msix"
     Write-Host "Packing $label MSIX..." -ForegroundColor Cyan
     & $makeAppx pack /d $layoutDir /p $msixPath /o
     if ($LASTEXITCODE -ne 0) {
@@ -195,7 +195,7 @@ $firstLayout = Get-ChildItem $tempRoot -Directory -Filter 'layout_*' | Select-Ob
 [xml]$layoutManifest = Get-Content (Join-Path $firstLayout.FullName 'AppxManifest.xml')
 $bundleVersion = $layoutManifest.Package.Identity.Version
 
-$bundlePath = Join-Path $publishDir 'CmdPalExtension.msixbundle'
+$bundlePath = Join-Path $publishDir 'AgentStatus.CmdPal.msixbundle'
 & $makeAppx bundle /d $msixDir /p $bundlePath /bv $bundleVersion /o
 if ($LASTEXITCODE -ne 0) {
     Write-Error "MakeAppx bundle failed."

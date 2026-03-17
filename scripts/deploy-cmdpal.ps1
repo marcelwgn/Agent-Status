@@ -10,12 +10,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outputDir = Join-Path $repoRoot "AgentStatus.CmdPalExtension\bin\$Platform\$Configuration\net9.0-windows10.0.26100.0\win-$($Platform.ToLower())"
-$manifestSource = Join-Path $repoRoot "AgentStatus.CmdPalExtension\Package.appxmanifest"
+$outputDir = Join-Path $repoRoot "AgentStatus.CmdPal\bin\$Platform\$Configuration\net9.0-windows10.0.26100.0\win-$($Platform.ToLower())"
+$manifestSource = Join-Path $repoRoot "AgentStatus.CmdPal\Package.appxmanifest"
 $manifestDest = Join-Path $outputDir "AppxManifest.xml"
-$assetsSource = Join-Path $repoRoot "AgentStatus.CmdPalExtension\Assets"
+$assetsSource = Join-Path $repoRoot "AgentStatus.CmdPal\Assets"
 
-if (-not (Test-Path (Join-Path $outputDir "AgentStatus.CmdPalExtension.exe"))) {
+if (-not (Test-Path (Join-Path $outputDir "AgentStatus.CmdPal.exe"))) {
     Write-Error "Build output not found at $outputDir. Build the solution first."
     exit 1
 }
@@ -24,8 +24,8 @@ Write-Host "Preparing deployment layout..." -ForegroundColor Cyan
 
 # Process the manifest (replace MSBuild tokens, fix asset paths)
 $content = Get-Content $manifestSource -Raw
-$content = $content -replace '\$targetnametoken\$', 'AgentStatus.CmdPalExtension'
-$content = $content -replace '\$targetentrypoint\$', 'AgentStatus.CmdPalExtension.exe'
+$content = $content -replace '\$targetnametoken\$', 'AgentStatus.CmdPal'
+$content = $content -replace '\$targetentrypoint\$', 'AgentStatus.CmdPal.exe'
 $content = $content -replace 'Square150x150Logo\.png', 'Square150x150Logo.scale-200.png'
 $content = $content -replace 'Square44x44Logo\.png', 'Square44x44Logo.scale-200.png'
 $content = $content -replace 'Wide310x150Logo\.png', 'Wide310x150Logo.scale-200.png'
@@ -42,7 +42,7 @@ $publicDir = Join-Path $outputDir "Public"
 if (-not (Test-Path $publicDir)) { New-Item $publicDir -ItemType Directory -Force | Out-Null }
 
 # Unregister old version if present
-$existing = Get-AppxPackage -Name "AgentStatus.CmdPalExtension" -ErrorAction SilentlyContinue
+$existing = Get-AppxPackage -Name "AgentStatus.CmdPal" -ErrorAction SilentlyContinue
 if ($existing) {
     Write-Host "Removing existing registration..." -ForegroundColor Yellow
     Remove-AppxPackage $existing
@@ -52,7 +52,7 @@ if ($existing) {
 Write-Host "Registering extension..." -ForegroundColor Cyan
 Add-AppxPackage -Register $manifestDest -ForceApplicationShutdown
 
-$pkg = Get-AppxPackage -Name "AgentStatus.CmdPalExtension"
+$pkg = Get-AppxPackage -Name "AgentStatus.CmdPal"
 if ($pkg -and $pkg.Status -eq "Ok") {
     Write-Host "Extension registered successfully!" -ForegroundColor Green
     Write-Host "  Name: $($pkg.Name)"
