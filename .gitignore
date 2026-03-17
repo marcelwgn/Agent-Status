@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # Claude Code
 .claude/
+
+# Store identity script (contains store-specific values)
+scripts/set-cmdpal-store-identity.ps1
