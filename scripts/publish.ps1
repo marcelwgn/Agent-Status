@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Builds and packages AIStatusTray as signed MSIX for distribution.
+    Builds and packages AgentStatus as signed MSIX for distribution.
 .DESCRIPTION
     1. Creates a self-signed certificate (30-day expiry) matching the Package.appxmanifest publisher.
     2. Builds for the current machine's architecture (and optionally others if SDK is installed).
     3. Packages each build as a signed .msix using the AppX layout output.
     4. Exports the .cer certificate for the recipient.
-    5. Copies the install script and zips everything into AIStatusTray.zip.
+    5. Copies the install script and zips everything into AgentStatus.zip.
 #>
 [CmdletBinding()]
 param(
@@ -17,8 +17,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AIStatusTray'
-$csproj = Join-Path $projectDir 'AIStatusTray.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus'
+$csproj = Join-Path $projectDir 'AgentStatus.csproj'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
 $publisher = 'CN=marcelwagner'
@@ -65,7 +65,7 @@ $cert = New-SelfSignedCertificate `
     -Type Custom `
     -Subject $publisher `
     -KeyUsage DigitalSignature `
-    -FriendlyName 'AIStatusTray Signing Certificate' `
+    -FriendlyName 'AgentStatus Signing Certificate' `
     -CertStoreLocation 'Cert:\CurrentUser\My' `
     -NotAfter (Get-Date).AddDays(30) `
     -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
@@ -74,7 +74,7 @@ $certThumbprint = $cert.Thumbprint
 Write-Host "Certificate created: $certThumbprint" -ForegroundColor Green
 
 # Export .cer for distribution
-$cerPath = Join-Path $publishDir 'AIStatusTray.cer'
+$cerPath = Join-Path $publishDir 'AgentStatus.cer'
 Export-Certificate -Cert "Cert:\CurrentUser\My\$certThumbprint" -FilePath $cerPath | Out-Null
 Write-Host "Certificate exported: $cerPath" -ForegroundColor Green
 
@@ -131,7 +131,7 @@ foreach ($arch in $architectures) {
     }
 
     # Package as MSIX
-    $msixPath = Join-Path $publishDir "AIStatusTray_$label.msix"
+    $msixPath = Join-Path $publishDir "AgentStatus_$label.msix"
     Write-Host "Packaging $label MSIX..." -ForegroundColor Cyan
     & $makeAppx pack /d $appxDir /p $msixPath /o
     if ($LASTEXITCODE -ne 0) {
@@ -162,9 +162,9 @@ $installScript = Join-Path $repoRoot 'scripts' 'install.ps1'
 Copy-Item $installScript $publishDir
 
 # --- Create zip ---
-Write-Host "`nCreating AIStatusTray.zip..." -ForegroundColor Cyan
-$zipPath = Join-Path $publishDir 'AIStatusTray.zip'
-$filesToZip = Get-ChildItem $publishDir -File | Where-Object { $_.Name -ne 'AIStatusTray.zip' }
+Write-Host "`nCreating AgentStatus.zip..." -ForegroundColor Cyan
+$zipPath = Join-Path $publishDir 'AgentStatus.zip'
+$filesToZip = Get-ChildItem $publishDir -File | Where-Object { $_.Name -ne 'AgentStatus.zip' }
 Compress-Archive -Path $filesToZip.FullName -DestinationPath $zipPath -Force
 Write-Host "Zip created: $zipPath" -ForegroundColor Green
 
@@ -172,7 +172,7 @@ Write-Host "Zip created: $zipPath" -ForegroundColor Green
 Get-ChildItem $publishDir -Directory -Filter '_layout_*' | Remove-Item -Recurse -Force
 Remove-Item "Cert:\CurrentUser\My\$certThumbprint" -ErrorAction SilentlyContinue
 
-Write-Host "`nDone! Share publish\AIStatusTray.zip with your colleague." -ForegroundColor Green
+Write-Host "`nDone! Share publish\AgentStatus.zip with your colleague." -ForegroundColor Green
 Write-Host "They should extract it and run: powershell -ExecutionPolicy Bypass -File install.ps1" -ForegroundColor Yellow
 if ($builtCount -lt $architectures.Count) {
     Write-Host "`nNote: Some architectures were skipped. Install the Windows 10 SDK for cross-compilation." -ForegroundColor Yellow

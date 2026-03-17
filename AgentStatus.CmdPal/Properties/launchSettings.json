@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "AgentStatusCmdPal (Package)": {
+      "commandName": "MsixPackage",
+      "doNotLaunchApp": true
+    },
+    "AgentStatusCmdPal (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

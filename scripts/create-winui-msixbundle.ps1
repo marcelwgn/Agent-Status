@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Builds AIStatusTray and creates an unsigned .msixbundle for Microsoft Store submission.
+    Builds AgentStatus and creates an unsigned .msixbundle for Microsoft Store submission.
 .DESCRIPTION
-    1. Builds AIStatusTray for each target architecture (x64, ARM64).
+    1. Builds AgentStatus for each target architecture (x64, ARM64).
     2. Creates an AppX layout directory for each build (output + manifest + images).
     3. Packs each layout into an individual .msix using makeappx.exe.
     4. Bundles all .msix files into a single .msixbundle.
@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AIStatusTray'
-$csproj = Join-Path $projectDir 'AIStatusTray.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus'
+$csproj = Join-Path $projectDir 'AgentStatus.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
@@ -145,7 +145,7 @@ foreach ($arch in $architectures) {
     }
 
     # Pack into MSIX (unsigned)
-    $msixPath = Join-Path $msixDir "AIStatusTray_$label.msix"
+    $msixPath = Join-Path $msixDir "AgentStatus_$label.msix"
     Write-Host "Packing $label MSIX..." -ForegroundColor Cyan
     & $makeAppx pack /d $layoutDir /p $msixPath /o
     if ($LASTEXITCODE -ne 0) {
@@ -170,7 +170,7 @@ $firstLayout = Get-ChildItem $tempRoot -Directory -Filter 'layout_*' | Select-Ob
 [xml]$layoutManifest = Get-Content (Join-Path $firstLayout.FullName 'AppxManifest.xml')
 $bundleVersion = $layoutManifest.Package.Identity.Version
 
-$bundlePath = Join-Path $publishDir 'AIStatusTray.msixbundle'
+$bundlePath = Join-Path $publishDir 'AgentStatus.msixbundle'
 & $makeAppx bundle /d $msixDir /p $bundlePath /bv $bundleVersion /o
 if ($LASTEXITCODE -ne 0) {
     Write-Error "MakeAppx bundle failed."

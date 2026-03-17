@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds AIStatusTray.CmdPalExtension and creates an unsigned .msixbundle for Microsoft Store submission.
+    Builds AgentStatus.CmdPalExtension and creates an unsigned .msixbundle for Microsoft Store submission.
 .DESCRIPTION
     1. Builds the CmdPal extension for each target architecture (x64, ARM64).
     2. Creates an AppX layout directory for each build (output + processed manifest + assets).
@@ -28,13 +28,13 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AIStatusTray.CmdPalExtension'
-$csproj = Join-Path $projectDir 'AIStatusTray.CmdPalExtension.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus.CmdPalExtension'
+$csproj = Join-Path $projectDir 'AgentStatus.CmdPalExtension.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $assetsDir = Join-Path $projectDir 'Assets'
 $publishDir = Join-Path $repoRoot 'publish'
 $tfm = 'net9.0-windows10.0.26100.0'
-$exeName = 'AIStatusTray.CmdPalExtension'
+$exeName = 'AgentStatus.CmdPalExtension'
 
 # --- Validate prerequisites ---
 if (-not (Test-Path $csproj)) {

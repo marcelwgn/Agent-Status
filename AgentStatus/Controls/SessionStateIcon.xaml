@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="AgentStatus.Controls.SessionStateIcon"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid
+        Height="20"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center"
+        ColumnSpacing="2">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="20" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Ellipse
+            x:Name="BackgroundEllipse"
+            Grid.Column="0"
+            Width="20"
+            Height="20"
+            Fill="#FF2D9B2D" />
+
+        <FontIcon
+            x:Name="StateIcon"
+            Grid.Column="0"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontSize="11"
+            Foreground="White"
+            Glyph="&#xE73E;" />
+
+        <!--  Spinner for active states (Thinking/Working/ExecutingTool)  -->
+        <ProgressRing
+            x:Name="SpinnerRing"
+            Grid.Column="0"
+            Width="20"
+            Height="20"
+            IsActive="False"
+            Visibility="Collapsed" />
+
+        <!--  Mode icon: robot for Autopilot  -->
+        <FontIcon
+            x:Name="ModeIcon"
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            FontSize="14"
+            Visibility="Collapsed" />
+
+        <VisualStateManager.VisualStateGroups>
+            <!--  Mode states: show letter label after icon  -->
+            <VisualStateGroup x:Name="ModeStates">
+                <VisualState x:Name="InteractiveMode" />
+                <VisualState x:Name="PlanMode" />
+                <VisualState x:Name="AutopilotMode">
+                    <VisualState.Setters>
+                        <Setter Target="ModeIcon.Visibility" Value="Visible" />
+                        <Setter Target="ModeIcon.Glyph" Value="&#xE768;" />
+                        <Setter Target="ModeIcon.Foreground" Value="#FF2D9B2D" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+
+            <!--  Session states  -->
+            <VisualStateGroup x:Name="SessionStates">
+                <!--  Idle: green circle, white checkmark  -->
+                <VisualState x:Name="IdleState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Visible" />
+                        <Setter Target="StateIcon.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.IsActive" Value="False" />
+                        <Setter Target="StateIcon.Glyph" Value="&#xE73E;" />
+                        <Setter Target="StateIcon.Foreground" Value="White" />
+                        <Setter Target="StateIcon.FontSize" Value="11" />
+                        <Setter Target="BackgroundEllipse.Fill" Value="#FF2D9B2D" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  Thinking: spinner  -->
+                <VisualState x:Name="ThinkingState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Collapsed" />
+                        <Setter Target="StateIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.IsActive" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  Working: spinner  -->
+                <VisualState x:Name="WorkingState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Collapsed" />
+                        <Setter Target="StateIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.IsActive" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  ExecutingTool: spinner  -->
+                <VisualState x:Name="ExecutingToolState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Collapsed" />
+                        <Setter Target="StateIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.IsActive" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  WaitingForUser: yellow circle, exclamation mark  -->
+                <VisualState x:Name="WaitingForUserState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Visible" />
+                        <Setter Target="StateIcon.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.IsActive" Value="False" />
+                        <Setter Target="StateIcon.Glyph" Value="!" />
+                        <Setter Target="StateIcon.FontFamily" Value="Segoe UI" />
+                        <Setter Target="StateIcon.FontWeight" Value="Bold" />
+                        <Setter Target="StateIcon.FontSize" Value="16" />
+                        <Setter Target="StateIcon.Foreground" Value="White" />
+                        <Setter Target="BackgroundEllipse.Fill" Value="#FFD4A017" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  Done: green circle, checkmark  -->
+                <VisualState x:Name="DoneState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Visible" />
+                        <Setter Target="StateIcon.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.IsActive" Value="False" />
+                        <Setter Target="StateIcon.Glyph" Value="&#xE930;" />
+                        <Setter Target="StateIcon.Foreground" Value="White" />
+                        <Setter Target="BackgroundEllipse.Fill" Value="#FF2D9B2D" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <!--  Unknown: same as Idle (white checkmark on green bubble)  -->
+                <VisualState x:Name="UnknownState">
+                    <VisualState.Setters>
+                        <Setter Target="BackgroundEllipse.Visibility" Value="Visible" />
+                        <Setter Target="StateIcon.Visibility" Value="Visible" />
+                        <Setter Target="SpinnerRing.Visibility" Value="Collapsed" />
+                        <Setter Target="SpinnerRing.IsActive" Value="False" />
+                        <Setter Target="StateIcon.Glyph" Value="&#xE73E;" />
+                        <Setter Target="StateIcon.Foreground" Value="White" />
+                        <Setter Target="BackgroundEllipse.Fill" Value="#FF2D9B2D" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+</UserControl>

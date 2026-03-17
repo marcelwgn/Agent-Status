@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="AgentStatus.Controls.SessionFlyout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:labs="using:CommunityToolkit.WinUI.Controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel
+        MinWidth="320"
+        MaxWidth="420"
+        Spacing="12">
+
+        <!--  ═══ HEADER: Initial ask + folder + branch ═══  -->
+        <StackPanel Spacing="4">
+            <!--  Summary + Mode badge row  -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock
+                    x:Name="SummaryText"
+                    Grid.Column="0"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Session"
+                    TextWrapping="Wrap" />
+
+                <!--  Mode badge (right corner)  -->
+                <Border
+                    x:Name="ModeBadge"
+                    Grid.Column="1"
+                    Margin="8,0,0,0"
+                    Padding="8,2,8,2"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource SystemAccentColor}"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="ModeText"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="White"
+                        Text="PLAN" />
+                </Border>
+            </Grid>
+
+            <!--  Folder + Branch row  -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon FontSize="12" Glyph="&#xE8B7;" />
+                    <TextBlock
+                        x:Name="FolderText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="—" />
+                </StackPanel>
+                <StackPanel
+                    x:Name="BranchPanel"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="12" Glyph="&#xE8AD;" />
+                    <TextBlock
+                        x:Name="BranchText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+        <!--  ═══ ACTIVITY SECTION ═══  -->
+        <StackPanel x:Name="ActivitySection" Spacing="8">
+            <!--  Working indicator: ProgressRing + state label  -->
+            <StackPanel
+                x:Name="WorkingIndicator"
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="Collapsed">
+                <ProgressRing
+                    Width="20"
+                    Height="20"
+                    IsActive="True" />
+                <TextBlock
+                    x:Name="StateLabel"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Working..." />
+            </StackPanel>
+
+            <!--  Idle / Done indicator  -->
+            <StackPanel
+                x:Name="IdleIndicator"
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="Collapsed">
+                <FontIcon
+                    x:Name="IdleIcon"
+                    FontSize="16"
+                    Glyph="&#xE8BD;" />
+                <TextBlock
+                    x:Name="IdleLabel"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Idle" />
+            </StackPanel>
+
+            <!--  Current intent  -->
+            <StackPanel
+                x:Name="IntentPanel"
+                Orientation="Horizontal"
+                Spacing="6"
+                Visibility="Collapsed">
+                <FontIcon
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Glyph="&#xE945;" />
+                <TextBlock
+                    x:Name="IntentText"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text=""
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </StackPanel>
+
+        <!--  ═══ USER PROMPT SECTION (only when WaitingForUser) ═══  -->
+        <StackPanel
+            x:Name="UserPromptSection"
+            Spacing="8"
+            Visibility="Collapsed">
+
+            <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon
+                    FontSize="14"
+                    Foreground="#FFD4A017"
+                    Glyph="&#xEA39;" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Foreground="#FFD4A017"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Action required" />
+            </StackPanel>
+
+            <!--  Question text (markdown)  -->
+            <labs:MarkdownTextBlock
+                x:Name="QuestionText"
+                MaxHeight="300"
+                Text=""
+                UseAutoLinks="True"
+                UseEmphasisExtras="True"
+                UseListExtras="True"
+                UsePipeTables="True"
+                UseTaskLists="True" />
+
+            <Border
+                x:Name="ChoicesDivider"
+                Height="1"
+                Margin="0,4,0,4"
+                Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                Visibility="Collapsed" />
+
+            <!--  Choices as buttons  -->
+            <ItemsControl
+                x:Name="ChoicesListView"
+                Visibility="Collapsed" />
+
+            <!--  Pending commands (informational)  -->
+            <StackPanel
+                x:Name="PendingCommandsList"
+                Spacing="4"
+                Visibility="Collapsed" />
+        </StackPanel>
+
+        <!--  ═══ OPEN IN TERMINAL BUTTON ═══  -->
+        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+        <Button
+            x:Name="OpenTerminalButton"
+            HorizontalAlignment="Stretch"
+            Click="OpenTerminalButton_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon FontSize="14" Glyph="&#xE756;" />
+                <TextBlock x:Name="OpenTerminalLabel" Text="Show window" />
+            </StackPanel>
+        </Button>
+    </StackPanel>
+</UserControl>

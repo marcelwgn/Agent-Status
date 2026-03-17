@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Installs AIStatusTray on this machine.
+    Installs AgentStatus on this machine.
 .DESCRIPTION
     1. Installs the self-signed certificate to the local machine Trusted People store.
     2. Detects the system architecture (x64 vs ARM64).
@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 # --- Install certificate ---
-$certPath = Join-Path $scriptDir 'AIStatusTray.cer'
+$certPath = Join-Path $scriptDir 'AgentStatus.cer'
 if (-not (Test-Path $certPath)) {
     Write-Error "Certificate not found: $certPath"
     exit 1
@@ -28,8 +28,8 @@ Write-Host "Certificate installed to Trusted People store." -ForegroundColor Gre
 # --- Detect architecture ---
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
 switch ($arch) {
-    'X64'   { $msixName = 'AIStatusTray_x64.msix' }
-    'Arm64' { $msixName = 'AIStatusTray_ARM64.msix' }
+    'X64'   { $msixName = 'AgentStatus_x64.msix' }
+    'Arm64' { $msixName = 'AgentStatus_ARM64.msix' }
     default {
         Write-Error "Unsupported architecture: $arch"
         exit 1
@@ -45,4 +45,4 @@ if (-not (Test-Path $msixPath)) {
 # --- Install MSIX ---
 Write-Host "Installing $msixName..." -ForegroundColor Cyan
 Add-AppxPackage -Path $msixPath
-Write-Host "AIStatusTray installed successfully!" -ForegroundColor Green
+Write-Host "AgentStatus installed successfully!" -ForegroundColor Green
