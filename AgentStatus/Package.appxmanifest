@@ -10,14 +10,14 @@
 
 
 	<Identity
-	   Name="AgentStatus"
+	   Name="AgentStatus-TaskbarTray"
 	   Publisher="CN=marcelwagner"
 	   Version="1.2.7.0" />
 
 	<mp:PhoneIdentity PhoneProductId="22afb25e-8523-432b-a063-6722aef1743f" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
 	<Properties>
-		<DisplayName>Agent Status</DisplayName>
+		<DisplayName>Agent Status - Taskbar Tray</DisplayName>
 		<PublisherDisplayName>Marcel Wagner</PublisherDisplayName>
 		<Logo>Images\StoreLogo.png</Logo>
 	</Properties>
@@ -36,8 +36,8 @@
 		  Executable="AgentStatus.exe"
 		  EntryPoint="Windows.FullTrustApplication">
 			<uap:VisualElements
-			  DisplayName="Agent Status"
-			  Description="Agent status taskbar band"
+			  DisplayName="Agent Status - Taskbar Tray"
+			  Description="Agent Status - Taskbar Tray"
 			  BackgroundColor="transparent"
 			  Square150x150Logo="Images\Square150x150Logo.png"
 			  Square44x44Logo="Images\Square44x44Logo.png">
@@ -47,7 +47,7 @@
 
 			<Extensions>
 				<desktop:Extension Category="windows.startupTask" Executable="AgentStatus.exe" EntryPoint="Windows.FullTrustApplication">
-					<desktop:StartupTask TaskId="AgentStatusStartupTask" Enabled="true" DisplayName="Agent Status" />
+					<desktop:StartupTask TaskId="AgentStatusStartupTask" Enabled="true" DisplayName="Agent Status - Taskbar Tray" />
 				</desktop:Extension>
 			</Extensions>
 

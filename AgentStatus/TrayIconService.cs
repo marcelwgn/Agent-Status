@@ -61,7 +61,7 @@ internal sealed partial class TrayIconService
                     uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP,
                     uCallbackMessage = WM_TRAY_ICON,
                     hIcon = (HICON)_largeIcon.DangerousGetHandle(),
-                    szTip = "Agent Status",
+                    szTip = "Agent Status - Taskbar Tray",
                 };
             }
 

@@ -8,7 +8,7 @@
     xmlns:local="using:AgentStatus"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:winuiex="using:WinUIEx"
-    Title="Agent Status"
+    Title="Agent Status - Taskbar Tray"
     Closed="MainWindow_Closed"
     IsAlwaysOnTop="True"
     mc:Ignorable="d">
