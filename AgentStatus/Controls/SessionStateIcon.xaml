@@ -108,7 +108,7 @@
                         <Setter Target="StateIcon.Visibility" Value="Visible" />
                         <Setter Target="SpinnerRing.Visibility" Value="Collapsed" />
                         <Setter Target="SpinnerRing.IsActive" Value="False" />
-                        <Setter Target="StateIcon.Glyph" Value="&#xE930;" />
+                        <Setter Target="StateIcon.Glyph" Value="&#xE73E;" />
                         <Setter Target="StateIcon.Foreground" Value="White" />
                         <Setter Target="BackgroundEllipse.Fill" Value="#FF2D9B2D" />
                     </VisualState.Setters>
