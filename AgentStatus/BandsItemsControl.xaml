@@ -43,7 +43,6 @@
                                 <!--  CopilotStateIcon for Copilot session buttons  -->
                                 <controls:SessionStateIcon
                                     Height="24"
-                                    Mode="{x:Bind SessionMode, Mode=OneWay}"
                                     State="{x:Bind SessionState, Mode=OneWay}"
                                     Visibility="{x:Bind HasSessionState, Mode=OneWay}" />
                             </StackPanel>
@@ -67,6 +66,17 @@
                                     TextAlignment="Left"
                                     TextTrimming="WordEllipsis"
                                     TextWrapping="NoWrap" />
+                                <TextBlock
+                                    MaxWidth="200"
+                                    Margin="0,-2,0,0"
+                                    HorizontalAlignment="Left"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    FontSize="10"
+                                    Text="{x:Bind Subtitle, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap"
+                                    Visibility="{x:Bind HasSubtitle, Mode=OneWay}" />
                             </StackPanel>
                         </Grid>
 
@@ -197,17 +207,26 @@
                                             Grid.Column="0"
                                             Height="24"
                                             VerticalAlignment="Center"
-                                            Mode="{x:Bind SessionMode, Mode=OneWay}"
                                             State="{x:Bind SessionState, Mode=OneWay}" />
 
-                                        <TextBlock
+                                        <StackPanel
                                             Grid.Column="1"
                                             VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                            Style="{StaticResource BodyTextBlockStyle}"
-                                            Text="{x:Bind Name, Mode=OneWay}"
-                                            TextTrimming="CharacterEllipsis"
-                                            TextWrapping="NoWrap" />
+                                            Orientation="Vertical">
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                Style="{StaticResource BodyTextBlockStyle}"
+                                                Text="{x:Bind Name, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="NoWrap" />
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind Subtitle, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="NoWrap"
+                                                Visibility="{x:Bind HasSubtitle, Mode=OneWay}" />
+                                        </StackPanel>
 
                                         <ProgressRing
                                             Grid.Column="2"

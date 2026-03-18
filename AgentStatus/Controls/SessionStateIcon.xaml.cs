@@ -12,7 +12,6 @@ public sealed partial class SessionStateIcon : UserControl
         this.Loaded += (_, _) =>
         {
             UpdateSessionState(State);
-            UpdateModeState(Mode);
         };
     }
 
@@ -26,29 +25,11 @@ public sealed partial class SessionStateIcon : UserControl
         set => SetValue(StateProperty, value);
     }
 
-    public static readonly DependencyProperty ModeProperty =
-        DependencyProperty.Register(nameof(Mode), typeof(AISessionMode), typeof(SessionStateIcon),
-            new PropertyMetadata(AISessionMode.Interactive, OnModeChanged));
-
-    public AISessionMode Mode
-    {
-        get => (AISessionMode)GetValue(ModeProperty);
-        set => SetValue(ModeProperty, value);
-    }
-
     private static void OnStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is SessionStateIcon icon)
         {
             icon.UpdateSessionState((AISessionState)e.NewValue);
-        }
-    }
-
-    private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d is SessionStateIcon icon)
-        {
-            icon.UpdateModeState((AISessionMode)e.NewValue);
         }
     }
 
@@ -67,15 +48,5 @@ public sealed partial class SessionStateIcon : UserControl
         VisualStateManager.GoToState(this, stateName, true);
     }
 
-    private void UpdateModeState(AISessionMode mode)
-    {
-        string modeName = mode switch
-        {
-            AISessionMode.Interactive => "InteractiveMode",
-            AISessionMode.Plan => "PlanMode",
-            AISessionMode.Autopilot => "AutopilotMode",
-            _ => "InteractiveMode",
-        };
-        VisualStateManager.GoToState(this, modeName, true);
-    }
+
 }

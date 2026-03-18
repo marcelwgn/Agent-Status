@@ -81,10 +81,32 @@ public sealed class CopilotUISessionManager : IUISessionManager
         vm.SessionMode = info.Mode;
         vm.PendingQuestion = info.PendingQuestion;
         vm.PendingChoices = info.PendingChoices;
+        vm.Subtitle = FormatState(info);
         vm.SessionInfo = info;
 
         vm.OnChoiceSelected = (choiceIndex) => OnChoiceSelected(info, choiceIndex);
         vm.OnRefreshRequested = () => Refresh();
+    }
+
+    private static string FormatState(AISessionInfo session)
+    {
+        string state = session.State switch
+        {
+            AISessionState.Idle => "Idle",
+            AISessionState.Thinking => "Thinking",
+            AISessionState.Working => "Working",
+            AISessionState.ExecutingTool => "Executing",
+            AISessionState.WaitingForUser => "Waiting",
+            AISessionState.Done => "Done",
+            _ => "Unknown",
+        };
+
+        if (session.Mode == AISessionMode.Autopilot)
+            state += " (agent)";
+        else if (session.Mode == AISessionMode.Plan)
+            state += " (plan)";
+
+        return state;
     }
 
     private static void OnChoiceSelected(AISessionInfo session, int choiceIndex)

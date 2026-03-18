@@ -8,14 +8,10 @@
     mc:Ignorable="d">
 
     <Grid
+        Width="20"
         Height="20"
         HorizontalAlignment="Center"
-        VerticalAlignment="Center"
-        ColumnSpacing="2">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="20" />
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
+        VerticalAlignment="Center">
 
         <Ellipse
             x:Name="BackgroundEllipse"
@@ -42,28 +38,7 @@
             IsActive="False"
             Visibility="Collapsed" />
 
-        <!--  Mode icon: robot for Autopilot  -->
-        <FontIcon
-            x:Name="ModeIcon"
-            Grid.Column="1"
-            VerticalAlignment="Center"
-            FontSize="14"
-            Visibility="Collapsed" />
-
         <VisualStateManager.VisualStateGroups>
-            <!--  Mode states: show letter label after icon  -->
-            <VisualStateGroup x:Name="ModeStates">
-                <VisualState x:Name="InteractiveMode" />
-                <VisualState x:Name="PlanMode" />
-                <VisualState x:Name="AutopilotMode">
-                    <VisualState.Setters>
-                        <Setter Target="ModeIcon.Visibility" Value="Visible" />
-                        <Setter Target="ModeIcon.Glyph" Value="&#xE768;" />
-                        <Setter Target="ModeIcon.Foreground" Value="#FF2D9B2D" />
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-
             <!--  Session states  -->
             <VisualStateGroup x:Name="SessionStates">
                 <!--  Idle: green circle, white checkmark  -->

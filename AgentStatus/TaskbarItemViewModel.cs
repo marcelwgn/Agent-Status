@@ -115,6 +115,12 @@ namespace AgentStatus
         [ObservableProperty]
         public partial AISessionMode SessionMode { get; set; }
 
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasSubtitle))]
+        public partial string? Subtitle { get; set; }
+
+        public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
+
         public bool HasSessionState => _hasSessionState;
 
         public bool HasRegularIcon => !_hasSessionState && HasIcon;
