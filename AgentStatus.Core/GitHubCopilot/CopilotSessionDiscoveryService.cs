@@ -247,28 +247,37 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
         try
         {
-            // Collect all running copilot.exe PIDs and their command lines
+            // Collect all running copilot.exe PIDs and their command lines via WMI.
+            // WMI may be unavailable in trimmed/packaged builds, so failures here
+            // are non-fatal — Strategy 2 (lock files) can work independently.
             Dictionary<int, string> runningPids = new();
 
-            using ManagementObjectSearcher searcher = new(
-                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = 'copilot.exe'");
-
-            foreach (ManagementObject obj in searcher.Get())
+            try
             {
-                string? cmdLine = obj["CommandLine"]?.ToString();
-                int pid = Convert.ToInt32(obj["ProcessId"]);
+                using ManagementObjectSearcher searcher = new(
+                    "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = 'copilot.exe'");
 
-                if (string.IsNullOrEmpty(cmdLine))
-                    continue;
-
-                runningPids[pid] = cmdLine;
-
-                // Strategy 1: extract session ID from --resume flag
-                Match match = ResumeSessionIdRegex().Match(cmdLine);
-                if (match.Success)
+                foreach (ManagementObject obj in searcher.Get())
                 {
-                    result[match.Groups[1].Value] = (pid, cmdLine);
+                    string? cmdLine = obj["CommandLine"]?.ToString();
+                    int pid = Convert.ToInt32(obj["ProcessId"]);
+
+                    if (string.IsNullOrEmpty(cmdLine))
+                        continue;
+
+                    runningPids[pid] = cmdLine;
+
+                    // Strategy 1: extract session ID from --resume flag
+                    Match match = ResumeSessionIdRegex().Match(cmdLine);
+                    if (match.Success)
+                    {
+                        result[match.Groups[1].Value] = (pid, cmdLine);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"WMI query failed, falling back to lock-file-only discovery: {ex.Message}");
             }
 
             // Strategy 2: scan lock files for sessions not found via --resume.
@@ -285,11 +294,28 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     foreach (string lockFile in Directory.EnumerateFiles(sessionDir, "inuse.*.lock"))
                     {
                         Match lockMatch = LockFilePidRegex().Match(Path.GetFileName(lockFile));
-                        if (lockMatch.Success && int.TryParse(lockMatch.Groups[1].Value, out int lockPid)
-                            && runningPids.TryGetValue(lockPid, out string? cmdLine))
+                        if (!lockMatch.Success || !int.TryParse(lockMatch.Groups[1].Value, out int lockPid))
+                            continue;
+
+                        // Use WMI data when available, otherwise verify process liveness directly
+                        if (runningPids.TryGetValue(lockPid, out string? cmdLine))
                         {
                             result[sessionId] = (lockPid, cmdLine);
                             break;
+                        }
+
+                        try
+                        {
+                            using Process proc = Process.GetProcessById(lockPid);
+                            if (!proc.HasExited)
+                            {
+                                result[sessionId] = (lockPid, "");
+                                break;
+                            }
+                        }
+                        catch
+                        {
+                            // Process no longer exists — stale lock file
                         }
                     }
                 }
