@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using AgentStatus.Core.Common;
 using AgentStatus.Core.GitHubCopilot;
 using AgentStatus.Core.ClaudeCode;
+using AgentStatus.Core.NativeAgent;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 
@@ -16,6 +17,7 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
 {
     private readonly CopilotSessionManager _copilotManager;
     private readonly ClaudeCodeSessionManager _claudeManager;
+    private readonly NativeAgentSessionManager _nativeAgentManager;
 
     public AgentStatusDockBand()
         : base([], "com.agentstatus.sessions", "Agent Status")
@@ -24,9 +26,11 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
 
         _copilotManager = new CopilotSessionManager();
         _claudeManager = new ClaudeCodeSessionManager();
+        _nativeAgentManager = new NativeAgentSessionManager();
 
         _copilotManager.SessionsChanged += (_, _) => UpdateItems();
         _claudeManager.SessionsChanged += (_, _) => UpdateItems();
+        _nativeAgentManager.SessionsChanged += (_, _) => UpdateItems();
 
         // Initial update after a brief delay to let discovery run
         Task.Run(async () =>
@@ -51,6 +55,16 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
         }
 
         foreach (AISessionInfo session in _claudeManager.Sessions)
+        {
+            items.Add(new ListItem(new SessionFocusCommand(session))
+            {
+                Title = session.DisplayName,
+                Subtitle = FormatState(session),
+                Icon = SessionIcons.GetIconForState(session.State),
+            });
+        }
+
+        foreach (AISessionInfo session in _nativeAgentManager.Sessions)
         {
             items.Add(new ListItem(new SessionFocusCommand(session))
             {
