@@ -17,6 +17,9 @@ public sealed partial class SessionFlyout : UserControl
     /// <summary>Callback to open the terminal / focus the session.</summary>
     public Action? OnOpenTerminal { get; set; }
 
+    /// <summary>Callback to hide this session from the taskbar.</summary>
+    public Action? OnHide { get; set; }
+
     /// <summary>Host application name for the "Show window" button label.</summary>
     public string HostAppName { get; set; } = string.Empty;
 
@@ -186,6 +189,11 @@ public sealed partial class SessionFlyout : UserControl
     private void OpenTerminalButton_Click(object sender, RoutedEventArgs e)
     {
         OnOpenTerminal?.Invoke();
+    }
+
+    private void HideButton_Click(object sender, RoutedEventArgs e)
+    {
+        OnHide?.Invoke();
     }
 
     private static Border BuildPendingCommandCard(PendingCommand cmd)

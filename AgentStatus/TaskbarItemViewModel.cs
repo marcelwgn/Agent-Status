@@ -147,7 +147,13 @@ namespace AgentStatus
 
         public bool HasPendingChoices => PendingChoices is { Length: > 0 };
 
+        [ObservableProperty]
+        public partial bool IsHidden { get; set; }
+
         public Action<int>? OnChoiceSelected { get; set; }
+
+        /// <summary>Callback invoked when the user hides this session from the taskbar.</summary>
+        public Action? OnHideRequested { get; set; }
 
         public AISessionInfo? SessionInfo { get; set; }
 
@@ -208,6 +214,13 @@ namespace AgentStatus
                 Content = flyoutContent,
                 FlyoutPresenterStyle = flyoutStyle,
                 SystemBackdrop = (Microsoft.UI.Xaml.Media.SystemBackdrop)Microsoft.UI.Xaml.Application.Current.Resources["AcrylicBackgroundFillColorDefaultBackdrop"],
+            };
+
+            flyoutContent.OnHide = () =>
+            {
+                IsHidden = true;
+                flyout.Hide();
+                OnHideRequested?.Invoke();
             };
 
             flyout.ShowAt(button);

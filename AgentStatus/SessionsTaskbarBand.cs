@@ -43,20 +43,25 @@ public sealed class SessionsTaskbarBand : TaskbarItemViewModel, IDisposable
 
     private void SyncButtons()
     {
-        HashSet<CommandViewModel> allVMs = [.. _managers.SelectMany(m => m.SessionViewModels)];
+        HashSet<CommandViewModel> allVMs = [.. _managers
+            .SelectMany(m => m.SessionViewModels)
+            .Where(vm => !vm.IsHidden)];
 
-        // Remove stale
+        // Remove stale or hidden
         for (int i = Buttons.Count - 1; i >= 0; i--)
         {
             if (!allVMs.Contains(Buttons[i]))
                 Buttons.RemoveAt(i);
         }
 
-        // Add new
+        // Add new (and wire up hide callback)
         foreach (CommandViewModel vm in allVMs)
         {
             if (!Buttons.Contains(vm))
+            {
+                vm.OnHideRequested = SyncButtons;
                 Buttons.Add(vm);
+            }
         }
 
         int count = Buttons.Count;
