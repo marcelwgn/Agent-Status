@@ -22,6 +22,7 @@ namespace AgentStatus
         private readonly TrayIconService _trayIconService = new();
         private readonly AppWindow _appWindow;
         private readonly Tasklist _tasklist;
+        private readonly TaskbarWidgetDetector _widgetDetector = new();
 
         // Constants for Windows messages related to display changes
         private const int WM_DISPLAYCHANGE = 0x007E;
@@ -226,8 +227,6 @@ namespace AgentStatus
                     lastButton = button.Name;
                 }
             }
-            float maxRightDips = maxRightInPixels / scaleFactor;
-            TaskbarButtons.Width = new GridLength(maxRightDips);
 
             HWND taskBarHwnd = PInvoke.FindWindow("Shell_TrayWnd", null);
             HWND notificationHwnd = PInvoke.FindWindowEx(taskBarHwnd, HWND.Null, "TrayNotifyWnd", null);
@@ -235,14 +234,24 @@ namespace AgentStatus
 
             int notificationAreaInPixels = trayRect.Width;
             float notificationAreaInDips = notificationAreaInPixels / scaleFactor;
-            TrayIcons.Width = new GridLength(notificationAreaInDips);
 
-            double available = this.Bounds.Width; // Root.ActualWidth
+            // Detect widget inline content and other system elements in the gap
+            // between the task buttons and the notification area.
+            (int effectiveLeft, int effectiveRight) = _widgetDetector.GetEffectiveContentBounds(
+                maxRightInPixels, trayRect.left);
 
-            double taskbarReserverdInDips = WindowsLogo.Width.Value + maxRightDips; // WindowsLogo.Width.Value=60
-            double forContent = available - taskbarReserverdInDips - notificationAreaInDips;
-            double reservedContent = WindowsLogo.ActualWidth + TaskbarButtons.ActualWidth /*+ Mid.ActualWidth*/ + notificationAreaInDips;
-            //double forContent2 = available - reservedContent;
+            float effectiveLeftDips = effectiveLeft / scaleFactor;
+            TaskbarButtons.Width = new GridLength(effectiveLeftDips);
+
+            double available = this.Bounds.Width;
+
+            // Right reservation: from the effective right boundary to the taskbar edge.
+            // Includes both the tray icons and any right-side widget content.
+            double rightReservationDips = Math.Max(notificationAreaInDips, available - (effectiveRight / scaleFactor));
+            TrayIcons.Width = new GridLength(rightReservationDips);
+
+            double taskbarReserverdInDips = WindowsLogo.Width.Value + effectiveLeftDips;
+            double forContent = available - taskbarReserverdInDips - rightReservationDips;
 
             if (_lastContentSpace == forContent)
             {
