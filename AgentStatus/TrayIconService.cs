@@ -70,8 +70,11 @@ internal sealed partial class TrayIconService
 
             if (_popupMenu is null)
             {
+                string versionText = GetVersionString();
                 _popupMenu = PInvoke.CreatePopupMenu_SafeHandle();
-                PInvoke.InsertMenu(_popupMenu, 0, MENU_ITEM_FLAGS.MF_BYPOSITION | MENU_ITEM_FLAGS.MF_STRING, PInvoke.WM_USER + 1, "Exit");
+                PInvoke.InsertMenu(_popupMenu, 0, MENU_ITEM_FLAGS.MF_BYPOSITION | MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_GRAYED, 0, versionText);
+                PInvoke.InsertMenu(_popupMenu, 1, MENU_ITEM_FLAGS.MF_BYPOSITION | MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
+                PInvoke.InsertMenu(_popupMenu, 2, MENU_ITEM_FLAGS.MF_BYPOSITION | MENU_ITEM_FLAGS.MF_STRING, PInvoke.WM_USER + 1, "Exit");
             }
         }
         else
@@ -116,6 +119,19 @@ internal sealed partial class TrayIconService
         string exePath = Path.Combine(AppContext.BaseDirectory, "AgentStatus.exe");
         PInvoke.ExtractIconEx(exePath, 0, out DestroyIconSafeHandle largeIcon, out _, 1);
         return largeIcon;
+    }
+
+    private static string GetVersionString()
+    {
+        try
+        {
+            var version = Windows.ApplicationModel.Package.Current.Id.Version;
+            return $"Agent Status v{version.Major}.{version.Minor}.{version.Build}";
+        }
+        catch
+        {
+            return "Agent Status";
+        }
     }
 
     private LRESULT WindowProc(
