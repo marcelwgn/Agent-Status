@@ -271,7 +271,15 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     Match match = ResumeSessionIdRegex().Match(cmdLine);
                     if (match.Success)
                     {
-                        result[match.Groups[1].Value] = (pid, cmdLine);
+                        string sessionId = match.Groups[1].Value;
+                        string sessionDir = Path.Combine(SessionStatePath, sessionId);
+
+                        // Only include sessions that have an active lock file
+                        if (Directory.Exists(sessionDir) &&
+                            Directory.EnumerateFiles(sessionDir, "inuse.*.lock").Any())
+                        {
+                            result[sessionId] = (pid, cmdLine);
+                        }
                     }
                 }
             }
