@@ -18,13 +18,19 @@ public sealed class TaskbarWidgetDetector : IDisposable
 {
     private IUIAutomation? _automation;
     private IUIAutomationCondition? _trueCondition;
+    private IUIAutomationCacheRequest? _cacheRequest;
     private bool _disposed;
+    private int _scanning;
 
     // Ignore very small elements (separators, borders, etc.)
     private const int MinElementWidth = 20;
 
     // Maximum UIA tree depth to traverse (avoids performance issues)
     private const int MaxDepth = 3;
+
+    // Maximum time to wait for a UIA scan before returning fallback values.
+    // UIA calls are cross-process COM calls that can hang if Explorer is unresponsive.
+    private const int ScanTimeoutMs = 500;
 
     /// <summary>
     /// Scans the taskbar for system elements (widgets, search highlights, etc.)
@@ -47,63 +53,92 @@ public sealed class TaskbarWidgetDetector : IDisposable
             return (taskButtonsRightEdge, trayLeftEdge);
         }
 
+        // Skip if a previous scan is still running (timed out and stuck)
+        if (Interlocked.CompareExchange(ref _scanning, 1, 0) != 0)
+        {
+            return (taskButtonsRightEdge, trayLeftEdge);
+        }
+
         try
         {
-            HWND shellTray = PInvoke.FindWindow("Shell_TrayWnd", null);
-            if (shellTray.IsNull)
+            var task = Task.Run(() =>
             {
-                return (taskButtonsRightEdge, trayLeftEdge);
-            }
+                try
+                {
+                    return ScanCore(taskButtonsRightEdge, trayLeftEdge);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _scanning, 0);
+                }
+            });
 
-            PInvoke.GetWindowRect(shellTray, out RECT taskbarRect);
-            int taskbarWidth = taskbarRect.Width;
-
-            // Find the XAML composition bridge that renders the modern Win11 taskbar.
-            // Widget inline content lives inside this tree with no separate HWND.
-            HWND xamlBridge = PInvoke.FindWindowEx(
-                shellTray, HWND.Null,
-                "Windows.UI.Composition.DesktopWindowContentBridge", null);
-            if (xamlBridge.IsNull)
-            {
-                return (taskButtonsRightEdge, trayLeftEdge);
-            }
-
-            EnsureAutomation();
-
-            IUIAutomationElement bridgeElement = _automation!.ElementFromHandle(xamlBridge);
-            if (bridgeElement == null)
-            {
-                return (taskButtonsRightEdge, trayLeftEdge);
-            }
-
-            try
-            {
-                int leftBound = taskButtonsRightEdge;
-                int rightBound = trayLeftEdge;
-                int gapMidpoint = (taskButtonsRightEdge + trayLeftEdge) / 2;
-
-                ScanForOccupiedElements(
-                    bridgeElement,
-                    taskButtonsRightEdge,
-                    trayLeftEdge,
-                    taskbarWidth,
-                    gapMidpoint,
-                    ref leftBound,
-                    ref rightBound,
-                    depth: 0);
-
-                return (leftBound, rightBound);
-            }
-            finally
-            {
-                Marshal.ReleaseComObject(bridgeElement);
-            }
+            return task.Wait(ScanTimeoutMs)
+                ? task.Result
+                : (taskButtonsRightEdge, trayLeftEdge);
         }
         catch (Exception)
         {
-            // Gracefully degrade — if widget detection fails for any reason,
-            // fall back to the original behavior (no widget reservation).
+            Interlocked.Exchange(ref _scanning, 0);
             return (taskButtonsRightEdge, trayLeftEdge);
+        }
+    }
+
+    /// <summary>
+    /// Core scan logic. Runs on a thread-pool thread so a stuck UIA call
+    /// does not block the UI thread beyond <see cref="ScanTimeoutMs"/>.
+    /// Uses a UIA cache request so element properties are fetched in bulk
+    /// rather than one cross-process call per element.
+    /// </summary>
+    private (int leftBound, int rightBound) ScanCore(
+        int taskButtonsRightEdge, int trayLeftEdge)
+    {
+        HWND shellTray = PInvoke.FindWindow("Shell_TrayWnd", null);
+        if (shellTray.IsNull)
+        {
+            return (taskButtonsRightEdge, trayLeftEdge);
+        }
+
+        PInvoke.GetWindowRect(shellTray, out RECT taskbarRect);
+        int taskbarWidth = taskbarRect.Width;
+
+        HWND xamlBridge = PInvoke.FindWindowEx(
+            shellTray, HWND.Null,
+            "Windows.UI.Composition.DesktopWindowContentBridge", null);
+        if (xamlBridge.IsNull)
+        {
+            return (taskButtonsRightEdge, trayLeftEdge);
+        }
+
+        EnsureAutomation();
+
+        IUIAutomationElement bridgeElement = _automation!.ElementFromHandle(xamlBridge);
+        if (bridgeElement == null)
+        {
+            return (taskButtonsRightEdge, trayLeftEdge);
+        }
+
+        try
+        {
+            int leftBound = taskButtonsRightEdge;
+            int rightBound = trayLeftEdge;
+            int gapMidpoint = (taskButtonsRightEdge + trayLeftEdge) / 2;
+
+            ScanForOccupiedElements(
+                bridgeElement,
+                taskButtonsRightEdge,
+                trayLeftEdge,
+                taskbarWidth,
+                gapMidpoint,
+                ref leftBound,
+                ref rightBound,
+                depth: 0);
+
+            return (leftBound, rightBound);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(bridgeElement);
         }
     }
 
@@ -129,7 +164,7 @@ public sealed class TaskbarWidgetDetector : IDisposable
         IUIAutomationElementArray? children;
         try
         {
-            children = parent.FindAll(TreeScope.TreeScope_Children, _trueCondition!);
+            children = parent.FindAllBuildCache(TreeScope.TreeScope_Children, _trueCondition!, _cacheRequest!);
         }
         catch (COMException)
         {
@@ -233,7 +268,7 @@ public sealed class TaskbarWidgetDetector : IDisposable
     {
         try
         {
-            object rect = element.GetCurrentPropertyValue(
+            object rect = element.GetCachedPropertyValue(
                 UIA_PROPERTY_ID.UIA_BoundingRectanglePropertyId);
             if (rect is double[] r && r.Length >= 4)
             {
@@ -253,6 +288,8 @@ public sealed class TaskbarWidgetDetector : IDisposable
         {
             _automation = (IUIAutomation)new CUIAutomation();
             _trueCondition = _automation.CreateTrueCondition();
+            _cacheRequest = _automation.CreateCacheRequest();
+            _cacheRequest.AddProperty(UIA_PROPERTY_ID.UIA_BoundingRectanglePropertyId);
         }
     }
 
@@ -261,6 +298,12 @@ public sealed class TaskbarWidgetDetector : IDisposable
     {
         if (!_disposed)
         {
+            if (_cacheRequest != null)
+            {
+                Marshal.ReleaseComObject(_cacheRequest);
+                _cacheRequest = null;
+            }
+
             if (_trueCondition != null)
             {
                 Marshal.ReleaseComObject(_trueCondition);
