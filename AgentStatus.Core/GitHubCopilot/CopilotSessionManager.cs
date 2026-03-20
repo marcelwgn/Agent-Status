@@ -77,7 +77,7 @@ public sealed class CopilotSessionManager : ISessionManager
             Debug.WriteLine("=== Copilot Sessions ===");
             foreach ((string sessionId, CopilotSessionInfo info) in sessions)
             {
-                Debug.WriteLine($"  {info.DisplayName}, {FormatMode(info.Mode)}, {info.State}");
+                Debug.WriteLine($"  {info.DisplayName}, {FormatMode(info.Mode)}, {info.State}, {info.SessionId}");
                 _previousStates[sessionId] = (info.State, info.Mode);
             }
             if (sessions.Count == 0)
