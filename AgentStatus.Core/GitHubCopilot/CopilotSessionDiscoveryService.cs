@@ -444,7 +444,11 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         {
             string eventsPath = Path.Combine(SessionStatePath, info.SessionId, "events.jsonl");
             if (!File.Exists(eventsPath))
+            {
+                // No events yet — session is alive (lock file exists) but idle.
+                info.State = AISessionState.Idle;
                 return;
+            }
 
             string? lastLine = null;
             string? lastStateLine = null;
