@@ -284,63 +284,101 @@ public sealed class ClaudeCodeSessionDiscoveryService : IDisposable
 
                     lastLine = line;
 
-                    string? type = ExtractTopLevelType(line);
-                    if (type == null) continue;
+                    JsonDocument? doc;
+                    try { doc = JsonDocument.Parse(line); }
+                    catch { continue; }
 
-                    if (type is "file-history-snapshot" or "system" or "queue-operation")
-                        continue;
-
-                    if (type == "user")
+                    using (doc)
                     {
-                        if (line.Contains("\"tool_result\""))
+                        JsonElement root = doc.RootElement;
+
+                        string? type = root.TryGetProperty("type", out JsonElement typeProp)
+                            ? typeProp.GetString() : null;
+                        if (type == null)
+                            continue;
+
+                        if (type is "file-history-snapshot" or "system" or "queue-operation")
+                            continue;
+
+                        // Navigate to message object if present
+                        JsonElement msg = root.TryGetProperty("message", out JsonElement m) ? m : root;
+
+                        if (type == "user")
                         {
-                            lastIsToolResult = true;
+                            if (HasContentBlockOfType(msg, "tool_result"))
+                            {
+                                lastIsToolResult = true;
+                            }
+                            else
+                            {
+                                lastTopLevelType = "user";
+                                lastIsToolResult = false;
+                                lastWasUserRejection = false;
+
+                                if (msg.TryGetProperty("content", out JsonElement contentEl) &&
+                                    contentEl.ValueKind == JsonValueKind.String)
+                                {
+                                    string? content = contentEl.GetString();
+                                    if (content != null && !content.StartsWith("[{"))
+                                        lastUserMessage = content;
+                                }
+                            }
                         }
-                        else
+                        else if (type == "assistant")
                         {
-                            lastTopLevelType = "user";
+                            lastTopLevelType = "assistant";
                             lastIsToolResult = false;
                             lastWasUserRejection = false;
 
-                            string? content = ExtractJsonValue(line, "content");
-                            if (content != null && !content.StartsWith("[{"))
-                                lastUserMessage = content;
-                        }
-                    }
-                    else if (type == "assistant")
-                    {
-                        lastTopLevelType = "assistant";
-                        lastIsToolResult = false;
-                        lastWasUserRejection = false;
+                            hasToolUseInLastAssistant = false;
+                            lastAssistantHadStopReasonToolUse = false;
+                            lastAssistantStopReasonNull = false;
+                            lastToolUseName = null;
+                            pendingQuestion = null;
+                            pendingChoices = null;
 
-                        hasToolUseInLastAssistant = false;
-                        lastAssistantHadStopReasonToolUse = false;
-                        lastAssistantStopReasonNull = false;
-                        lastToolUseName = null;
-                        pendingQuestion = null;
-                        pendingChoices = null;
-
-                        if (line.Contains("\"tool_use\""))
-                        {
-                            hasToolUseInLastAssistant = true;
-
-                            string? toolName = ExtractToolName(line);
-                            if (toolName != null)
-                                lastToolUseName = toolName;
-
-                            if (line.Contains("\"AskUserQuestion\""))
+                            if (msg.TryGetProperty("content", out JsonElement contentEl) &&
+                                contentEl.ValueKind == JsonValueKind.Array)
                             {
-                                pendingQuestion = ExtractNestedJsonValue(line, "question");
-                                pendingChoices = null;
+                                foreach (JsonElement block in contentEl.EnumerateArray())
+                                {
+                                    string? blockType = block.TryGetProperty("type", out JsonElement bt)
+                                        ? bt.GetString() : null;
+                                    if (blockType != "tool_use")
+                                        continue;
+
+                                    hasToolUseInLastAssistant = true;
+                                    string? toolName = block.TryGetProperty("name", out JsonElement nameEl)
+                                        ? nameEl.GetString() : null;
+                                    if (toolName != null)
+                                        lastToolUseName = toolName;
+
+                                    if (toolName == "AskUserQuestion" &&
+                                        block.TryGetProperty("input", out JsonElement inputEl) &&
+                                        inputEl.ValueKind == JsonValueKind.Object &&
+                                        inputEl.TryGetProperty("question", out JsonElement qEl))
+                                    {
+                                        pendingQuestion = qEl.GetString();
+                                        pendingChoices = null;
+                                    }
+                                }
+                            }
+
+                            if (msg.TryGetProperty("stop_reason", out JsonElement srEl))
+                            {
+                                if (srEl.ValueKind == JsonValueKind.String)
+                                {
+                                    string? sr = srEl.GetString();
+                                    if (sr == "tool_use")
+                                        lastAssistantHadStopReasonToolUse = true;
+                                    // "end_turn" leaves it false (already reset above)
+                                }
+                                else if (srEl.ValueKind == JsonValueKind.Null)
+                                {
+                                    lastAssistantStopReasonNull = true;
+                                }
                             }
                         }
-
-                        if (line.Contains("\"stop_reason\":\"tool_use\""))
-                            lastAssistantHadStopReasonToolUse = true;
-                        else if (line.Contains("\"stop_reason\":\"end_turn\""))
-                            lastAssistantHadStopReasonToolUse = false;
-                        else if (line.Contains("\"stop_reason\":null"))
-                            lastAssistantStopReasonNull = true;
                     }
                 }
             }
@@ -396,6 +434,22 @@ public sealed class ClaudeCodeSessionDiscoveryService : IDisposable
         }
     }
 
+    private static bool HasContentBlockOfType(JsonElement msg, string blockType)
+    {
+        if (!msg.TryGetProperty("content", out JsonElement contentEl) ||
+            contentEl.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (JsonElement block in contentEl.EnumerateArray())
+        {
+            if (block.TryGetProperty("type", out JsonElement bt) &&
+                bt.ValueKind == JsonValueKind.String &&
+                bt.GetString() == blockType)
+                return true;
+        }
+        return false;
+    }
+
     private static AISessionState DeriveState(string? lastTopLevelType,
         bool hasToolUse, bool stopReasonToolUse, bool stopReasonNull,
         bool lastIsToolResult, bool lastWasUserRejection)
@@ -415,63 +469,6 @@ public sealed class ClaudeCodeSessionDiscoveryService : IDisposable
         }
 
         return AISessionState.Unknown;
-    }
-
-    private static string? ExtractTopLevelType(string json)
-    {
-        ReadOnlySpan<string> topLevelTypes = ["progress", "file-history-snapshot",
-            "system", "queue-operation", "assistant", "user"];
-
-        foreach (string t in topLevelTypes)
-        {
-            string pattern = $"\"type\":\"{t}\"";
-            if (json.Contains(pattern, StringComparison.Ordinal))
-                return t;
-        }
-
-        return null;
-    }
-
-    private static string? ExtractJsonValue(string json, string key)
-    {
-        string pattern = $"\"{key}\":\"";
-        int start = json.IndexOf(pattern, StringComparison.Ordinal);
-        if (start < 0) return null;
-
-        start += pattern.Length;
-        int end = json.IndexOf('"', start);
-        return end > start ? json[start..end] : null;
-    }
-
-    private static string? ExtractToolName(string json)
-    {
-        int toolUseIdx = json.LastIndexOf("\"tool_use\"", StringComparison.Ordinal);
-        if (toolUseIdx < 0) return null;
-
-        string namePattern = "\"name\":\"";
-        int nameIdx = json.IndexOf(namePattern, toolUseIdx, StringComparison.Ordinal);
-        if (nameIdx < 0) return null;
-
-        int start = nameIdx + namePattern.Length;
-        int end = json.IndexOf('"', start);
-        return end > start ? json[start..end] : null;
-    }
-
-    private static string? ExtractNestedJsonValue(string json, string key)
-    {
-        string pattern = $"\"{key}\":\"";
-        int start = json.IndexOf(pattern, StringComparison.Ordinal);
-        if (start < 0) return null;
-
-        start += pattern.Length;
-        int end = start;
-        while (end < json.Length)
-        {
-            if (json[end] == '"' && (end == 0 || json[end - 1] != '\\'))
-                break;
-            end++;
-        }
-        return end > start ? json[start..end] : null;
     }
 
     public void Refresh()
