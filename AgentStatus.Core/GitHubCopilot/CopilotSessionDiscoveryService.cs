@@ -1,6 +1,7 @@
 using AgentStatus.Core.Common;
 using System.Diagnostics;
 using System.Management;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace AgentStatus.Core.GitHubCopilot;
@@ -452,6 +453,8 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
             string? lastLine = null;
             string? lastStateLine = null;
+            string? lastStateType = null;
+            bool lastStateHasWaitingTools = false;
             HashSet<string> completedToolCallIds = new();
             HashSet<string> startedToolCallIds = new();
             HashSet<string> userRequestedToolCallIds = new();
@@ -484,79 +487,122 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
                     lastLine = line;
 
-                    foreach (string eventType in stateDefiningTypes)
+                    JsonDocument? doc;
+                    try { doc = JsonDocument.Parse(line); }
+                    catch { continue; }
+
+                    using (doc)
                     {
-                        if (line.Contains($"\"type\":\"{eventType}\""))
+                        JsonElement root = doc.RootElement;
+
+                        string? eventType = root.TryGetProperty("type", out JsonElement typeProp)
+                            ? typeProp.GetString()
+                            : null;
+                        if (eventType == null)
+                            continue;
+
+                        if (stateDefiningTypes.Contains(eventType))
                         {
                             lastStateLine = line;
-                            break;
+                            lastStateType = eventType;
+                            lastStateHasWaitingTools = false;
                         }
-                    }
 
-                    if (line.Contains("\"type\":\"session.start\"") || line.Contains("\"session.start\""))
-                    {
-                        string? mode = ExtractJsonValue(line, "mode");
-                        if (mode != null)
-                            lastMode = mode;
-                    }
+                        JsonElement data = root.TryGetProperty("data", out JsonElement d) ? d : root;
 
-                    if (line.Contains("\"type\":\"session.task_complete\""))
-                        sawTaskComplete = true;
-
-                    if (line.Contains("\"type\":\"tool.execution_complete\""))
-                    {
-                        string? toolCallId = ExtractJsonValue(line, "toolCallId");
-                        if (toolCallId != null)
-                            completedToolCallIds.Add(toolCallId);
-                    }
-
-                    if (line.Contains("\"type\":\"tool.execution_start\""))
-                    {
-                        string? toolCallId = ExtractJsonValue(line, "toolCallId");
-                        if (toolCallId != null)
+                        switch (eventType)
                         {
-                            startedToolCallIds.Add(toolCallId);
-                            if (line.Contains("\"ask_user\"") || line.Contains("\"exit_plan_mode\""))
-                                askUserStarts.Add((toolCallId, line));
+                            case "session.start":
+                                if (data.TryGetProperty("mode", out JsonElement modeEl))
+                                    lastMode = modeEl.GetString();
+                                break;
+
+                            case "session.task_complete":
+                                sawTaskComplete = true;
+                                break;
+
+                            case "tool.execution_complete":
+                                if (data.TryGetProperty("toolCallId", out JsonElement tcIdEl))
+                                {
+                                    string? tcId = tcIdEl.GetString();
+                                    if (tcId != null)
+                                        completedToolCallIds.Add(tcId);
+                                }
+                                break;
+
+                            case "tool.execution_start":
+                            {
+                                string? toolCallId = data.TryGetProperty("toolCallId", out JsonElement startTcEl)
+                                    ? startTcEl.GetString() : null;
+                                string? toolName = data.TryGetProperty("toolName", out JsonElement tnEl)
+                                    ? tnEl.GetString() : null;
+
+                                if (toolCallId != null)
+                                {
+                                    startedToolCallIds.Add(toolCallId);
+                                    if (toolName is "ask_user" or "exit_plan_mode")
+                                        askUserStarts.Add((toolCallId, line));
+                                }
+
+                                if (toolName == "report_intent" &&
+                                    data.TryGetProperty("arguments", out JsonElement argsEl) &&
+                                    argsEl.ValueKind == JsonValueKind.Object &&
+                                    argsEl.TryGetProperty("intent", out JsonElement intentEl))
+                                {
+                                    lastIntent = intentEl.GetString();
+                                }
+                                break;
+                            }
+
+                            case "tool.user_requested":
+                                if (data.TryGetProperty("toolCallId", out JsonElement urTcEl))
+                                {
+                                    string? tcId = urTcEl.GetString();
+                                    if (tcId != null)
+                                        userRequestedToolCallIds.Add(tcId);
+                                }
+                                break;
+
+                            case "assistant.message":
+                                lastAssistantMessageLine = line;
+
+                                if (stateDefiningTypes.Contains(eventType))
+                                    lastStateHasWaitingTools = HasWaitingToolRequest(data);
+
+                                if (data.TryGetProperty("toolRequests", out JsonElement trEl) &&
+                                    trEl.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (JsonElement req in trEl.EnumerateArray())
+                                    {
+                                        string? reqName = req.TryGetProperty("name", out JsonElement reqNameEl)
+                                            ? reqNameEl.GetString() : null;
+                                        if (reqName == "report_intent" &&
+                                            req.TryGetProperty("arguments", out JsonElement reqArgsEl) &&
+                                            reqArgsEl.ValueKind == JsonValueKind.Object &&
+                                            reqArgsEl.TryGetProperty("intent", out JsonElement reqIntentEl))
+                                        {
+                                            lastIntent = reqIntentEl.GetString();
+                                        }
+                                    }
+                                }
+                                break;
+
+                            case "user.message":
+                                sawTaskComplete = false;
+                                if (data.TryGetProperty("content", out JsonElement contentEl))
+                                    lastUserMessage = contentEl.GetString();
+                                break;
+
+                            case "session.resume":
+                                sawTaskComplete = false;
+                                break;
+
+                            case "session.mode_changed":
+                                sawTaskComplete = false;
+                                if (data.TryGetProperty("newMode", out JsonElement newModeEl))
+                                    lastMode = newModeEl.GetString();
+                                break;
                         }
-                    }
-
-                    if (line.Contains("\"type\":\"tool.user_requested\""))
-                    {
-                        string? toolCallId = ExtractJsonValue(line, "toolCallId");
-                        if (toolCallId != null)
-                            userRequestedToolCallIds.Add(toolCallId);
-                    }
-
-                    if (line.Contains("\"type\":\"assistant.message\""))
-                    {
-                        lastAssistantMessageLine = line;
-                    }
-
-                    if (line.Contains("\"type\":\"user.message\""))
-                    {
-                        sawTaskComplete = false;
-                        string? content = ExtractJsonValue(line, "content");
-                        if (content != null)
-                            lastUserMessage = content;
-                    }
-
-                    if (line.Contains("\"type\":\"session.resume\""))
-                        sawTaskComplete = false;
-
-                    if (line.Contains("\"report_intent\"") && line.Contains("\"intent\":"))
-                    {
-                        string? intent = ExtractJsonValue(line, "intent");
-                        if (intent != null)
-                            lastIntent = intent;
-                    }
-
-                    if (line.Contains("\"type\":\"session.mode_changed\""))
-                    {
-                        sawTaskComplete = false;
-                        string? newMode = ExtractJsonValue(line, "newMode");
-                        if (newMode != null)
-                            lastMode = newMode;
                     }
                 }
             }
@@ -564,7 +610,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
             if (lastLine == null)
                 return;
 
-            info.State = DeriveStateFromEvent(lastStateLine ?? lastLine);
+            info.State = DeriveState(lastStateType, lastStateHasWaitingTools);
 
             // task_complete is followed by hook/tool cleanup events and
             // assistant.turn_end, which would otherwise override the state
@@ -572,12 +618,20 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
             if (sawTaskComplete && info.State != AISessionState.Thinking)
                 info.State = AISessionState.Done;
 
-            if (info.State == AISessionState.Working && lastStateLine != null &&
-                lastStateLine.Contains("\"type\":\"tool.execution_complete\""))
+            if (info.State == AISessionState.Working && lastStateType == "tool.execution_complete"
+                && lastStateLine != null)
             {
-                string? completedToolCallId = ExtractJsonValue(lastStateLine, "toolCallId");
-                if (completedToolCallId != null && userRequestedToolCallIds.Contains(completedToolCallId))
-                    info.State = AISessionState.Idle;
+                try
+                {
+                    using JsonDocument lastDoc = JsonDocument.Parse(lastStateLine);
+                    JsonElement lastData = lastDoc.RootElement.TryGetProperty("data", out JsonElement ld)
+                        ? ld : lastDoc.RootElement;
+                    string? completedToolCallId = lastData.TryGetProperty("toolCallId", out JsonElement ctcEl)
+                        ? ctcEl.GetString() : null;
+                    if (completedToolCallId != null && userRequestedToolCallIds.Contains(completedToolCallId))
+                        info.State = AISessionState.Idle;
+                }
+                catch { /* best-effort */ }
             }
 
             info.LastUserMessage = lastUserMessage;
@@ -622,47 +676,56 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         }
     }
 
-    private static string? ExtractJsonValue(string json, string key)
+    private static bool HasWaitingToolRequest(JsonElement data)
     {
-        string pattern = $"\"{key}\":\"";
-        int start = json.IndexOf(pattern, StringComparison.Ordinal);
-        if (start < 0) return null;
+        if (!data.TryGetProperty("toolRequests", out JsonElement toolRequests) ||
+            toolRequests.ValueKind != JsonValueKind.Array)
+            return false;
 
-        start += pattern.Length;
-        int end = json.IndexOf('"', start);
-        return end > start ? json[start..end] : null;
+        foreach (JsonElement req in toolRequests.EnumerateArray())
+        {
+            if (req.TryGetProperty("name", out JsonElement nameEl) &&
+                nameEl.ValueKind == JsonValueKind.String)
+            {
+                string? name = nameEl.GetString();
+                if (name is "ask_user" or "exit_plan_mode")
+                    return true;
+            }
+        }
+        return false;
     }
 
     private static void ParseAskUserArguments(string jsonLine, CopilotSessionInfo info)
     {
         try
         {
-            int argsIdx = jsonLine.IndexOf("\"arguments\":", StringComparison.Ordinal);
-            if (argsIdx < 0) return;
+            using JsonDocument doc = JsonDocument.Parse(jsonLine);
+            JsonElement root = doc.RootElement;
 
-            int braceStart = jsonLine.IndexOf('{', argsIdx);
-            if (braceStart < 0) return;
-
-            int depth = 0;
-            int braceEnd = -1;
-            for (int i = braceStart; i < jsonLine.Length; i++)
+            JsonElement args;
+            if (root.TryGetProperty("data", out JsonElement data) &&
+                data.TryGetProperty("arguments", out JsonElement dataArgs) &&
+                dataArgs.ValueKind == JsonValueKind.Object)
             {
-                if (jsonLine[i] == '{') depth++;
-                else if (jsonLine[i] == '}') { depth--; if (depth == 0) { braceEnd = i; break; } }
+                args = dataArgs;
+            }
+            else if (root.TryGetProperty("arguments", out JsonElement rootArgs) &&
+                     rootArgs.ValueKind == JsonValueKind.Object)
+            {
+                args = rootArgs;
+            }
+            else
+            {
+                return;
             }
 
-            if (braceEnd < 0) return;
-
-            string argsJson = jsonLine[braceStart..(braceEnd + 1)];
-            using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(argsJson);
-
-            if (doc.RootElement.TryGetProperty("question", out System.Text.Json.JsonElement questionEl))
+            if (args.TryGetProperty("question", out JsonElement questionEl))
             {
                 info.PendingQuestion = questionEl.GetString();
             }
 
-            if (doc.RootElement.TryGetProperty("choices", out System.Text.Json.JsonElement choicesEl) &&
-                choicesEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            if (args.TryGetProperty("choices", out JsonElement choicesEl) &&
+                choicesEl.ValueKind == JsonValueKind.Array)
             {
                 info.PendingChoices = choicesEl.EnumerateArray()
                     .Select(e => e.GetString() ?? "")
@@ -670,14 +733,14 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     .ToArray();
             }
 
-            if (doc.RootElement.TryGetProperty("summary", out System.Text.Json.JsonElement summaryEl))
+            if (args.TryGetProperty("summary", out JsonElement summaryEl))
             {
                 info.PendingQuestion ??= summaryEl.GetString();
             }
 
             if (info.PendingChoices == null &&
-                doc.RootElement.TryGetProperty("actions", out System.Text.Json.JsonElement actionsEl) &&
-                actionsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                args.TryGetProperty("actions", out JsonElement actionsEl) &&
+                actionsEl.ValueKind == JsonValueKind.Array)
             {
                 info.PendingChoices = actionsEl.EnumerateArray()
                     .Select(e => e.GetString() ?? "")
@@ -713,16 +776,16 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
 
         try
         {
-            using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(assistantMessageLine);
+            using JsonDocument doc = JsonDocument.Parse(assistantMessageLine);
 
             if (!doc.RootElement.TryGetProperty("data", out var data))
                 return result;
             if (!data.TryGetProperty("toolRequests", out var toolRequests))
                 return result;
-            if (toolRequests.ValueKind != System.Text.Json.JsonValueKind.Array)
+            if (toolRequests.ValueKind != JsonValueKind.Array)
                 return result;
 
-            foreach (System.Text.Json.JsonElement toolReq in toolRequests.EnumerateArray())
+            foreach (JsonElement toolReq in toolRequests.EnumerateArray())
             {
                 string? toolCallId = toolReq.TryGetProperty("toolCallId", out var tcId) ? tcId.GetString() : null;
                 string? toolName = toolReq.TryGetProperty("name", out var tn) ? tn.GetString() : null;
@@ -735,7 +798,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 string? command = null;
                 string? description = null;
                 if (toolReq.TryGetProperty("arguments", out var args) &&
-                    args.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    args.ValueKind == JsonValueKind.Object)
                 {
                     command = args.TryGetProperty("command", out var cmd) ? cmd.GetString() : null;
                     description = args.TryGetProperty("description", out var desc) ? desc.GetString() : null;
@@ -772,63 +835,45 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         return result;
     }
 
-    private static AISessionState DeriveStateFromEvent(string jsonLine)
+    private static AISessionState DeriveState(string? eventType, bool hasWaitingTools)
     {
-        if (jsonLine.Contains("\"type\":\"session.task_complete\""))
-            return AISessionState.Done;
-
-        if (jsonLine.Contains("\"type\":\"session.shutdown\""))
-            return AISessionState.Done;
-
-        if (jsonLine.Contains("\"type\":\"user.message\""))
-            return AISessionState.Thinking;
-
-        if (jsonLine.Contains("\"type\":\"tool.execution_start\""))
-            return AISessionState.ExecutingTool;
-
-        if (jsonLine.Contains("\"type\":\"tool.execution_complete\""))
-            return AISessionState.Working;
-
-        if (jsonLine.Contains("\"type\":\"assistant.turn_end\""))
-            return AISessionState.Idle;
-
-        if (jsonLine.Contains("\"type\":\"assistant.turn_start\""))
-            return AISessionState.Working;
-
-        if (jsonLine.Contains("\"type\":\"assistant.message\""))
+        return eventType switch
         {
-            if (jsonLine.Contains("\"ask_user\"") || jsonLine.Contains("\"exit_plan_mode\""))
-                return AISessionState.WaitingForUser;
+            "session.task_complete" or "session.shutdown"
+                => AISessionState.Done,
 
-            return AISessionState.Working;
-        }
+            "user.message"
+                => AISessionState.Thinking,
 
-        if (jsonLine.Contains("\"type\":\"hook.start\"") || jsonLine.Contains("\"type\":\"hook.end\""))
-            return AISessionState.Working;
+            "tool.execution_start"
+                => AISessionState.ExecutingTool,
 
-        if (jsonLine.Contains("\"type\":\"subagent.started\"") ||
-            jsonLine.Contains("\"type\":\"subagent.completed\"") ||
-            jsonLine.Contains("\"type\":\"subagent.failed\""))
-            return AISessionState.Working;
+            "tool.execution_complete" or "tool.user_requested"
+                => AISessionState.Working,
 
-        if (jsonLine.Contains("\"type\":\"tool.user_requested\""))
-            return AISessionState.Working;
+            "assistant.turn_end"
+                => AISessionState.Idle,
 
-        if (jsonLine.Contains("\"type\":\"session.plan_changed\"") ||
-            jsonLine.Contains("\"type\":\"session.compaction_start\"") ||
-            jsonLine.Contains("\"type\":\"session.compaction_complete\"") ||
-            jsonLine.Contains("\"type\":\"session.context_changed\"") ||
-            jsonLine.Contains("\"type\":\"system.notification\""))
-            return AISessionState.Working;
+            "assistant.turn_start"
+                => AISessionState.Working,
 
-        if (jsonLine.Contains("\"type\":\"session.start\"") ||
-            jsonLine.Contains("\"type\":\"session.resume\"") ||
-            jsonLine.Contains("\"type\":\"session.warning\"") ||
-            jsonLine.Contains("\"type\":\"session.mode_changed\"") ||
-            jsonLine.Contains("\"type\":\"abort\""))
-            return AISessionState.Idle;
+            "assistant.message" when hasWaitingTools
+                => AISessionState.WaitingForUser,
+            "assistant.message"
+                => AISessionState.Working,
 
-        return AISessionState.Unknown;
+            "hook.start" or "hook.end"
+            or "subagent.started" or "subagent.completed" or "subagent.failed"
+            or "session.plan_changed" or "session.compaction_start" or "session.compaction_complete"
+            or "session.context_changed" or "system.notification"
+                => AISessionState.Working,
+
+            "session.start" or "session.resume" or "session.warning"
+            or "session.mode_changed" or "abort"
+                => AISessionState.Idle,
+
+            _ => AISessionState.Unknown,
+        };
     }
 
     public void Refresh()
