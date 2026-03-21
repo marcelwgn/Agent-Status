@@ -33,7 +33,7 @@ $csproj = Join-Path $projectDir 'AgentStatus.CmdPal.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $assetsDir = Join-Path $projectDir 'Assets'
 $publishDir = Join-Path $repoRoot 'publish'
-$tfm = 'net9.0-windows10.0.26100.0'
+$tfm = 'net10.0-windows10.0.26100.0'
 $exeName = 'AgentStatus.CmdPal'
 
 # --- Validate prerequisites ---

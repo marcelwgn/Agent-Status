@@ -22,7 +22,7 @@ $csproj = Join-Path $projectDir 'AgentStatus.csproj'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
 $publisher = 'CN=marcelwagner'
-$tfm = 'net9.0-windows10.0.26100.0'
+$tfm = 'net10.0-windows10.0.26100.0'
 
 # --- Locate SDK tools ---
 function Find-SdkTool([string]$toolName) {

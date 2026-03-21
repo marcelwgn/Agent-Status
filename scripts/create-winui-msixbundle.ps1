@@ -33,7 +33,7 @@ $csproj = Join-Path $projectDir 'AgentStatus.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
-$tfm = 'net9.0-windows10.0.26100.0'
+$tfm = 'net10.0-windows10.0.26100.0'
 
 # --- Validate prerequisites ---
 if (-not (Test-Path $csproj)) {

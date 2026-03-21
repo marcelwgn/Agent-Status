@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outputDir = Join-Path $repoRoot "AgentStatus.CmdPal\bin\$Platform\$Configuration\net9.0-windows10.0.26100.0\win-$($Platform.ToLower())"
+$outputDir = Join-Path $repoRoot "AgentStatus.CmdPal\bin\$Platform\$Configuration\net10.0-windows10.0.26100.0\win-$($Platform.ToLower())"
 $manifestSource = Join-Path $repoRoot "AgentStatus.CmdPal\Package.appxmanifest"
 $manifestDest = Join-Path $outputDir "AppxManifest.xml"
 $assetsSource = Join-Path $repoRoot "AgentStatus.CmdPal\Assets"
