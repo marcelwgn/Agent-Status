@@ -451,228 +451,233 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                 return;
             }
 
-            string? lastLine = null;
-            string? lastStateLine = null;
-            string? lastStateType = null;
-            bool lastStateHasWaitingTools = false;
-            HashSet<string> completedToolCallIds = new();
-            HashSet<string> startedToolCallIds = new();
-            HashSet<string> userRequestedToolCallIds = new();
-            List<(string toolCallId, string line)> askUserStarts = new();
-            string? lastUserMessage = null;
-            string? lastIntent = null;
-            string? lastMode = null;
-            string? lastAssistantMessageLine = null;
-            bool sawTaskComplete = false;
-
-            HashSet<string> stateDefiningTypes = new()
-            {
-                "session.task_complete", "session.shutdown",
-                "user.message",
-                "tool.execution_start", "tool.execution_complete", "tool.user_requested",
-                "assistant.turn_end", "assistant.turn_start", "assistant.message",
-                "hook.start", "hook.end",
-                "subagent.started", "subagent.completed", "subagent.failed",
-                "abort",
-            };
-
-            using (FileStream fs = new(eventsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (StreamReader reader = new(fs))
-            {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
-
-                    lastLine = line;
-
-                    JsonDocument? doc;
-                    try { doc = JsonDocument.Parse(line); }
-                    catch { continue; }
-
-                    using (doc)
-                    {
-                        JsonElement root = doc.RootElement;
-
-                        string? eventType = root.TryGetProperty("type", out JsonElement typeProp)
-                            ? typeProp.GetString()
-                            : null;
-                        if (eventType == null)
-                            continue;
-
-                        if (stateDefiningTypes.Contains(eventType))
-                        {
-                            lastStateLine = line;
-                            lastStateType = eventType;
-                            lastStateHasWaitingTools = false;
-                        }
-
-                        JsonElement data = root.TryGetProperty("data", out JsonElement d) ? d : root;
-
-                        switch (eventType)
-                        {
-                            case "session.start":
-                                if (data.TryGetProperty("mode", out JsonElement modeEl))
-                                    lastMode = modeEl.GetString();
-                                break;
-
-                            case "session.task_complete":
-                                sawTaskComplete = true;
-                                break;
-
-                            case "tool.execution_complete":
-                                if (data.TryGetProperty("toolCallId", out JsonElement tcIdEl))
-                                {
-                                    string? tcId = tcIdEl.GetString();
-                                    if (tcId != null)
-                                        completedToolCallIds.Add(tcId);
-                                }
-                                break;
-
-                            case "tool.execution_start":
-                            {
-                                string? toolCallId = data.TryGetProperty("toolCallId", out JsonElement startTcEl)
-                                    ? startTcEl.GetString() : null;
-                                string? toolName = data.TryGetProperty("toolName", out JsonElement tnEl)
-                                    ? tnEl.GetString() : null;
-
-                                if (toolCallId != null)
-                                {
-                                    startedToolCallIds.Add(toolCallId);
-                                    if (toolName is "ask_user" or "exit_plan_mode")
-                                        askUserStarts.Add((toolCallId, line));
-                                }
-
-                                if (toolName == "report_intent" &&
-                                    data.TryGetProperty("arguments", out JsonElement argsEl) &&
-                                    argsEl.ValueKind == JsonValueKind.Object &&
-                                    argsEl.TryGetProperty("intent", out JsonElement intentEl))
-                                {
-                                    lastIntent = intentEl.GetString();
-                                }
-                                break;
-                            }
-
-                            case "tool.user_requested":
-                                if (data.TryGetProperty("toolCallId", out JsonElement urTcEl))
-                                {
-                                    string? tcId = urTcEl.GetString();
-                                    if (tcId != null)
-                                        userRequestedToolCallIds.Add(tcId);
-                                }
-                                break;
-
-                            case "assistant.message":
-                                lastAssistantMessageLine = line;
-
-                                if (stateDefiningTypes.Contains(eventType))
-                                    lastStateHasWaitingTools = HasWaitingToolRequest(data);
-
-                                if (data.TryGetProperty("toolRequests", out JsonElement trEl) &&
-                                    trEl.ValueKind == JsonValueKind.Array)
-                                {
-                                    foreach (JsonElement req in trEl.EnumerateArray())
-                                    {
-                                        string? reqName = req.TryGetProperty("name", out JsonElement reqNameEl)
-                                            ? reqNameEl.GetString() : null;
-                                        if (reqName == "report_intent" &&
-                                            req.TryGetProperty("arguments", out JsonElement reqArgsEl) &&
-                                            reqArgsEl.ValueKind == JsonValueKind.Object &&
-                                            reqArgsEl.TryGetProperty("intent", out JsonElement reqIntentEl))
-                                        {
-                                            lastIntent = reqIntentEl.GetString();
-                                        }
-                                    }
-                                }
-                                break;
-
-                            case "user.message":
-                                sawTaskComplete = false;
-                                if (data.TryGetProperty("content", out JsonElement contentEl))
-                                    lastUserMessage = contentEl.GetString();
-                                break;
-
-                            case "session.resume":
-                                sawTaskComplete = false;
-                                break;
-
-                            case "session.mode_changed":
-                                sawTaskComplete = false;
-                                if (data.TryGetProperty("newMode", out JsonElement newModeEl))
-                                    lastMode = newModeEl.GetString();
-                                break;
-                        }
-                    }
-                }
-            }
-
-            if (lastLine == null)
-                return;
-
-            info.State = DeriveState(lastStateType, lastStateHasWaitingTools);
-
-            // task_complete is followed by hook/tool cleanup events and
-            // assistant.turn_end, which would otherwise override the state
-            // to Idle. Restore Done when no new user.message followed.
-            if (sawTaskComplete && info.State != AISessionState.Thinking)
-                info.State = AISessionState.Done;
-
-            if (info.State == AISessionState.Working && lastStateType == "tool.execution_complete"
-                && lastStateLine != null)
-            {
-                try
-                {
-                    using JsonDocument lastDoc = JsonDocument.Parse(lastStateLine);
-                    JsonElement lastData = lastDoc.RootElement.TryGetProperty("data", out JsonElement ld)
-                        ? ld : lastDoc.RootElement;
-                    string? completedToolCallId = lastData.TryGetProperty("toolCallId", out JsonElement ctcEl)
-                        ? ctcEl.GetString() : null;
-                    if (completedToolCallId != null && userRequestedToolCallIds.Contains(completedToolCallId))
-                        info.State = AISessionState.Idle;
-                }
-                catch { /* best-effort */ }
-            }
-
-            info.LastUserMessage = lastUserMessage;
-            info.CurrentIntent = lastIntent;
-            info.Mode = lastMode switch
-            {
-                "plan" => AISessionMode.Plan,
-                "autopilot" => AISessionMode.Autopilot,
-                _ => AISessionMode.Interactive,
-            };
-
-            info.PendingQuestion = null;
-            info.PendingChoices = null;
-            info.PendingCommands = null;
-
-            foreach ((string toolCallId, string askLine) in askUserStarts)
-            {
-                if (!completedToolCallIds.Contains(toolCallId))
-                {
-                    ParseAskUserArguments(askLine, info);
-                    info.State = AISessionState.WaitingForUser;
-                    break;
-                }
-            }
-
-            bool requiresApproval = lastMode != "autopilot";
-
-            if (requiresApproval && !info.HasPendingChoices && lastAssistantMessageLine != null)
-            {
-                List<PendingCommand> pendingCmds = ParsePendingCommands(
-                    lastAssistantMessageLine, startedToolCallIds, completedToolCallIds, userRequestedToolCallIds);
-                if (pendingCmds.Count > 0)
-                {
-                    info.PendingCommands = pendingCmds;
-                    info.State = AISessionState.WaitingForUser;
-                }
-            }
+            using FileStream fs = new(eventsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using StreamReader reader = new(fs);
+            ReadSessionState(info, reader);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"ReadSessionState error: {ex.Message}");
+        }
+    }
+
+    internal static void ReadSessionState(CopilotSessionInfo info, TextReader reader)
+    {
+        string? lastLine = null;
+        string? lastStateLine = null;
+        string? lastStateType = null;
+        HashSet<string> completedToolCallIds = new();
+        HashSet<string> startedToolCallIds = new();
+        HashSet<string> userRequestedToolCallIds = new();
+        List<(string toolCallId, string line)> askUserStarts = new();
+        string? lastUserMessage = null;
+        string? lastIntent = null;
+        string? lastMode = null;
+        string? lastAssistantMessageLine = null;
+        bool sawTaskComplete = false;
+
+        HashSet<string> stateDefiningTypes = new()
+        {
+            "session.task_complete", "session.shutdown",
+            "session.start", "session.resume", "session.warning", "session.mode_changed",
+            "session.plan_changed", "session.compaction_start", "session.compaction_complete",
+            "session.context_changed",
+            "user.message",
+            "tool.execution_start", "tool.execution_complete", "tool.user_requested",
+            "assistant.turn_end", "assistant.turn_start", "assistant.message",
+            "hook.start", "hook.end",
+            "subagent.started", "subagent.completed", "subagent.failed",
+            "system.notification",
+            "abort",
+        };
+
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            lastLine = line;
+
+            JsonDocument? doc;
+            try { doc = JsonDocument.Parse(line); }
+            catch { continue; }
+
+            using (doc)
+            {
+                JsonElement root = doc.RootElement;
+
+                string? eventType = root.TryGetProperty("type", out JsonElement typeProp)
+                    ? typeProp.GetString()
+                    : null;
+                if (eventType == null)
+                    continue;
+
+                if (stateDefiningTypes.Contains(eventType))
+                {
+                    lastStateLine = line;
+                    lastStateType = eventType;
+                }
+
+                JsonElement data = root.TryGetProperty("data", out JsonElement d) ? d : root;
+
+                switch (eventType)
+                {
+                    case "session.start":
+                        if (data.TryGetProperty("mode", out JsonElement modeEl))
+                            lastMode = modeEl.GetString();
+                        break;
+
+                    case "session.task_complete":
+                        sawTaskComplete = true;
+                        break;
+
+                    case "tool.execution_complete":
+                        if (data.TryGetProperty("toolCallId", out JsonElement tcIdEl))
+                        {
+                            string? tcId = tcIdEl.GetString();
+                            if (tcId != null)
+                                completedToolCallIds.Add(tcId);
+                        }
+                        break;
+
+                    case "tool.execution_start":
+                    {
+                        string? toolCallId = data.TryGetProperty("toolCallId", out JsonElement startTcEl)
+                            ? startTcEl.GetString() : null;
+                        string? toolName = data.TryGetProperty("toolName", out JsonElement tnEl)
+                            ? tnEl.GetString() : null;
+
+                        if (toolCallId != null)
+                        {
+                            startedToolCallIds.Add(toolCallId);
+                            if (toolName is "ask_user" or "exit_plan_mode")
+                                askUserStarts.Add((toolCallId, line));
+                        }
+
+                        if (toolName == "report_intent" &&
+                            data.TryGetProperty("arguments", out JsonElement argsEl) &&
+                            argsEl.ValueKind == JsonValueKind.Object &&
+                            argsEl.TryGetProperty("intent", out JsonElement intentEl))
+                        {
+                            lastIntent = intentEl.GetString();
+                        }
+                        break;
+                    }
+
+                    case "tool.user_requested":
+                        if (data.TryGetProperty("toolCallId", out JsonElement urTcEl))
+                        {
+                            string? tcId = urTcEl.GetString();
+                            if (tcId != null)
+                                userRequestedToolCallIds.Add(tcId);
+                        }
+                        break;
+
+                    case "assistant.message":
+                        lastAssistantMessageLine = line;
+
+                        if (data.TryGetProperty("toolRequests", out JsonElement trEl) &&
+                            trEl.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (JsonElement req in trEl.EnumerateArray())
+                            {
+                                string? reqName = req.TryGetProperty("name", out JsonElement reqNameEl)
+                                    ? reqNameEl.GetString() : null;
+                                if (reqName == "report_intent" &&
+                                    req.TryGetProperty("arguments", out JsonElement reqArgsEl) &&
+                                    reqArgsEl.ValueKind == JsonValueKind.Object &&
+                                    reqArgsEl.TryGetProperty("intent", out JsonElement reqIntentEl))
+                                {
+                                    lastIntent = reqIntentEl.GetString();
+                                }
+                            }
+                        }
+                        break;
+
+                    case "user.message":
+                        sawTaskComplete = false;
+                        if (data.TryGetProperty("content", out JsonElement contentEl))
+                            lastUserMessage = contentEl.GetString();
+                        break;
+
+                    case "session.resume":
+                        sawTaskComplete = false;
+                        break;
+
+                    case "session.mode_changed":
+                        sawTaskComplete = false;
+                        if (data.TryGetProperty("newMode", out JsonElement newModeEl))
+                            lastMode = newModeEl.GetString();
+                        break;
+                }
+            }
+        }
+
+        if (lastLine == null)
+            return;
+
+        // Derive state from last state-defining event
+        bool hasWaitingTools = lastStateType == "assistant.message" && lastStateLine != null
+            && HasWaitingToolRequestFromLine(lastStateLine);
+        info.State = DeriveState(lastStateType, hasWaitingTools);
+
+        // task_complete is followed by hook/tool cleanup events and
+        // assistant.turn_end, which would otherwise override the state
+        // to Idle. Restore Done when no new user.message followed.
+        if (sawTaskComplete && info.State != AISessionState.Thinking)
+            info.State = AISessionState.Done;
+
+        if (info.State == AISessionState.Working && lastStateType == "tool.execution_complete"
+            && lastStateLine != null)
+        {
+            try
+            {
+                using JsonDocument lastDoc = JsonDocument.Parse(lastStateLine);
+                JsonElement lastData = lastDoc.RootElement.TryGetProperty("data", out JsonElement ld)
+                    ? ld : lastDoc.RootElement;
+                string? completedToolCallId = lastData.TryGetProperty("toolCallId", out JsonElement ctcEl)
+                    ? ctcEl.GetString() : null;
+                if (completedToolCallId != null && userRequestedToolCallIds.Contains(completedToolCallId))
+                    info.State = AISessionState.Idle;
+            }
+            catch { /* best-effort */ }
+        }
+
+        info.LastUserMessage = lastUserMessage;
+        info.CurrentIntent = lastIntent;
+        info.Mode = lastMode switch
+        {
+            "plan" => AISessionMode.Plan,
+            "autopilot" => AISessionMode.Autopilot,
+            _ => AISessionMode.Interactive,
+        };
+
+        info.PendingQuestion = null;
+        info.PendingChoices = null;
+        info.PendingCommands = null;
+
+        foreach ((string toolCallId, string askLine) in askUserStarts)
+        {
+            if (!completedToolCallIds.Contains(toolCallId))
+            {
+                ParseAskUserArguments(askLine, info);
+                info.State = AISessionState.WaitingForUser;
+                break;
+            }
+        }
+
+        bool requiresApproval = lastMode != "autopilot";
+
+        if (requiresApproval && !info.HasPendingChoices && lastAssistantMessageLine != null)
+        {
+            List<PendingCommand> pendingCmds = ParsePendingCommands(
+                lastAssistantMessageLine, startedToolCallIds, completedToolCallIds, userRequestedToolCallIds);
+            if (pendingCmds.Count > 0)
+            {
+                info.PendingCommands = pendingCmds;
+                info.State = AISessionState.WaitingForUser;
+            }
         }
     }
 
@@ -833,6 +838,17 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         }
 
         return result;
+    }
+
+    private static bool HasWaitingToolRequestFromLine(string jsonLine)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(jsonLine);
+            JsonElement data = doc.RootElement.TryGetProperty("data", out JsonElement d) ? d : doc.RootElement;
+            return HasWaitingToolRequest(data);
+        }
+        catch { return false; }
     }
 
     private static AISessionState DeriveState(string? eventType, bool hasWaitingTools)
