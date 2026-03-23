@@ -4,7 +4,7 @@ using AgentStatus.Core.GitHubCopilot;
 namespace AgentStatus.Core.Tests;
 
 [TestClass]
-public class CopilotDeriveStateTests
+public class CopilotSessionStateReaderTests
 {
     [TestMethod]
     // Done
@@ -109,7 +109,7 @@ public class CopilotDeriveStateTests
     private static CopilotSessionInfo ReadState(string jsonl)
     {
         var info = new CopilotSessionInfo { SessionId = "test-session" };
-        CopilotSessionDiscoveryService.ReadSessionState(info, new StringReader(jsonl));
+        CopilotSessionStateReader.ReadSessionState(info, new StringReader(jsonl));
         return info;
     }
 }

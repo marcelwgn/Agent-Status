@@ -4,7 +4,7 @@ using AgentStatus.Core.ClaudeCode;
 namespace AgentStatus.Core.Tests;
 
 [TestClass]
-public class ClaudeCodeDeriveStateTests
+public class ClaudeCodeSessionStateReaderTests
 {
     [TestMethod]
     // Thinking — user text messages
@@ -95,7 +95,7 @@ public class ClaudeCodeDeriveStateTests
     private static ClaudeCodeSessionInfo ReadState(string jsonl)
     {
         var info = new ClaudeCodeSessionInfo { SessionId = "test-session-id" };
-        ClaudeCodeSessionDiscoveryService.ReadSessionState(info, new StringReader(jsonl));
+        ClaudeCodeSessionStateReader.ReadSessionState(info, new StringReader(jsonl));
         return info;
     }
 }
