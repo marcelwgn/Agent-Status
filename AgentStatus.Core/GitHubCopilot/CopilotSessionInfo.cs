@@ -13,4 +13,7 @@ public sealed class CopilotSessionInfo : AISessionInfo
 
     /// <summary>PID of the parent process</summary>
     public int ParentPid { get; set; }
+
+    /// <summary>Creation time of the lock file that established this session.</summary>
+    public DateTime LockFileCreationTimeUtc { get; init; }
 }

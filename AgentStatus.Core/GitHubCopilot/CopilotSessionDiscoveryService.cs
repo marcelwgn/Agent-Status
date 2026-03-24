@@ -139,7 +139,8 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                     try
                     {
                         using Process proc = Process.GetProcessById(info.CopilotPid);
-                        if (proc.HasExited)
+                        if (proc.HasExited ||
+                            IsRecycledPid(proc, info.LockFileCreationTimeUtc))
                         {
                             anyExited = true;
                             break;
@@ -188,6 +189,7 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                             SessionId = sessionId,
                             CopilotPid = copilotPid,
                             HostAppName = "Terminal",
+                            LockFileCreationTimeUtc = GetLockFileCreationTimeUtc(sessionId, copilotPid),
                         };
                         _sessions[sessionId] = info;
                         changed = true;
@@ -316,7 +318,8 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
                         try
                         {
                             using Process proc = Process.GetProcessById(lockPid);
-                            if (!proc.HasExited)
+                            if (!proc.HasExited &&
+                                !IsRecycledPid(proc, File.GetCreationTimeUtc(lockFile)))
                             {
                                 result[sessionId] = (lockPid, "");
                                 break;
@@ -459,6 +462,34 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         {
             Debug.WriteLine($"ReadSessionState error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Returns true if the process was started more than one minute after the
+    /// reference time (e.g. lock file creation), indicating the OS recycled the PID.
+    /// </summary>
+    private static bool IsRecycledPid(Process proc, DateTime referenceTimeUtc)
+    {
+        try
+        {
+            return proc.StartTime.ToUniversalTime() > referenceTimeUtc.AddMinutes(1);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static DateTime GetLockFileCreationTimeUtc(string sessionId, int pid)
+    {
+        try
+        {
+            string lockPath = Path.Combine(SessionStatePath, sessionId, $"inuse.{pid}.lock");
+            if (File.Exists(lockPath))
+                return File.GetCreationTimeUtc(lockPath);
+        }
+        catch { /* best-effort */ }
+        return DateTime.UtcNow;
     }
 
     public void Refresh()

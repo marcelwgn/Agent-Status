@@ -196,8 +196,9 @@ public sealed class ClaudeCodeSessionDiscoveryService : IDisposable
 
                     try
                     {
-                        Process proc = Process.GetProcessById(pid);
-                        if (proc.HasExited)
+                        using Process proc = Process.GetProcessById(pid);
+                        if (proc.HasExited ||
+                            proc.StartTime.ToUniversalTime() > File.GetCreationTimeUtc(file).AddMinutes(1))
                             continue;
                     }
                     catch
