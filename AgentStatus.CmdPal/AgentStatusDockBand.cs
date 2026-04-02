@@ -18,13 +18,13 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
     private readonly ClaudeCodeSessionManager _claudeManager;
     private readonly object _updateLock = new();
 
-    public AgentStatusDockBand()
+    public AgentStatusDockBand(CopilotSessionManager copilotManager, ClaudeCodeSessionManager claudeManager)
         : base([], "com.agentstatus.sessions", "Agent Status")
     {
         Icon = SessionIcons.Provider;
 
-        _copilotManager = new CopilotSessionManager();
-        _claudeManager = new ClaudeCodeSessionManager();
+        _copilotManager = copilotManager;
+        _claudeManager = claudeManager;
 
         _copilotManager.SessionsChanged += (_, _) => UpdateItems();
         _claudeManager.SessionsChanged += (_, _) => UpdateItems();
