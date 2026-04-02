@@ -121,7 +121,7 @@ internal sealed partial class SessionFocusCommand : InvokableCommand
 
     public override ICommandResult Invoke()
     {
-        Task.Run(() => ShowWindowHelper.BringToFront(_session.ShellPid));
+        Task.Run(async () => await ShowWindowHelper.BringToFrontAsync(_session.ShellPid));
         return CommandResult.Dismiss();
     }
 }

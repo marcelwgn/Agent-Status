@@ -149,6 +149,16 @@ public static class ShowWindowHelper
     /// </summary>
     public static void BringToFront(int shellPid)
     {
+        BringToFrontAsync(shellPid).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Async version of <see cref="BringToFront"/>. Adds a short delay between
+    /// foregrounding the window and switching tabs so that <c>wt.exe -w 0</c>
+    /// targets the correct (now-MRU) terminal window.
+    /// </summary>
+    public static async Task BringToFrontAsync(int shellPid)
+    {
         HWND hwnd = new((nint)FindTerminalWindow(shellPid));
         if (hwnd != HWND.Null)
         {
@@ -160,7 +170,12 @@ public static class ShowWindowHelper
 
             int tabIndex = FindTabIndex(shellPid);
             if (tabIndex >= 0)
+            {
+                // Allow the OS to register the terminal as the MRU window
+                // before wt.exe resolves -w 0.
+                await Task.Delay(200);
                 SwitchTerminalTab(tabIndex);
+            }
         }
         else
         {
