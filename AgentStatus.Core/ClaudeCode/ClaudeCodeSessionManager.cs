@@ -15,6 +15,7 @@ public sealed class ClaudeCodeSessionManager : ISessionManager
     private readonly ClaudeCodeSessionDiscoveryService _discovery;
     private readonly Dictionary<string, ClaudeCodeSessionInfo> _tracked = [];
     private readonly Dictionary<string, (AISessionState state, AISessionMode mode)> _previousStates = [];
+    private readonly object _syncLock = new();
     private bool _isFirstPoll = true;
 
     public ObservableCollection<AISessionInfo> Sessions { get; } = [];
@@ -35,36 +36,40 @@ public sealed class ClaudeCodeSessionManager : ISessionManager
     private void SyncSessions()
     {
         IReadOnlyDictionary<string, ClaudeCodeSessionInfo> discovered = _discovery.Sessions;
+        List<string> removed;
 
-        // Remove sessions that no longer exist
-        List<string> toRemove = _tracked.Keys.Where(k => !discovered.ContainsKey(k)).ToList();
-        foreach (string id in toRemove)
+        lock (_syncLock)
         {
-            if (_tracked.TryGetValue(id, out ClaudeCodeSessionInfo? old))
+            // Remove sessions that no longer exist
+            removed = _tracked.Keys.Where(k => !discovered.ContainsKey(k)).ToList();
+            foreach (string id in removed)
             {
-                Sessions.Remove(old);
-                _tracked.Remove(id);
+                if (_tracked.TryGetValue(id, out ClaudeCodeSessionInfo? old))
+                {
+                    Sessions.Remove(old);
+                    _tracked.Remove(id);
+                }
+            }
+
+            // Add or update sessions
+            foreach ((string sessionId, ClaudeCodeSessionInfo info) in discovered)
+            {
+                if (_tracked.TryGetValue(sessionId, out ClaudeCodeSessionInfo? existing))
+                {
+                    int idx = Sessions.IndexOf(existing);
+                    if (idx >= 0)
+                        Sessions[idx] = info;
+                    _tracked[sessionId] = info;
+                }
+                else
+                {
+                    _tracked[sessionId] = info;
+                    Sessions.Add(info);
+                }
             }
         }
 
-        // Add or update sessions
-        foreach ((string sessionId, ClaudeCodeSessionInfo info) in discovered)
-        {
-            if (_tracked.TryGetValue(sessionId, out ClaudeCodeSessionInfo? existing))
-            {
-                int idx = Sessions.IndexOf(existing);
-                if (idx >= 0)
-                    Sessions[idx] = info;
-                _tracked[sessionId] = info;
-            }
-            else
-            {
-                _tracked[sessionId] = info;
-                Sessions.Add(info);
-            }
-        }
-
-        LogStateChanges(discovered, toRemove);
+        LogStateChanges(discovered, removed);
         SessionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
