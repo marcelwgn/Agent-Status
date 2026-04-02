@@ -388,31 +388,70 @@ public sealed partial class CopilotSessionDiscoveryService : IDisposable
         return result;
     }
 
+    private static readonly HashSet<string> ShellProcessNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "pwsh.exe", "powershell.exe", "cmd.exe", "bash.exe", "wsl.exe",
+    };
+
     private static void PopulateProcessTree(CopilotSessionInfo info)
     {
         try
         {
-            using ManagementObjectSearcher parentSearch = new(
-                $"SELECT ProcessId, ParentProcessId FROM Win32_Process WHERE ProcessId = {info.CopilotPid}");
+            // Walk up the process tree from copilot.exe and find the first
+            // ancestor that is a known shell (pwsh, cmd, etc.). This handles
+            // both direct invocation (pwsh → copilot) and gh-based invocation
+            // (pwsh → gh → copilot) without hardcoding the number of levels.
+            int currentPid = info.CopilotPid;
 
-            foreach (ManagementObject obj in parentSearch.Get())
+            for (int level = 0; level < 5; level++)
             {
-                int parentPid = Convert.ToInt32(obj["ParentProcessId"]);
-                info.ParentPid = parentPid;
+                int parentPid = GetParentPid(currentPid);
+                if (parentPid == 0 || parentPid == currentPid)
+                    break;
 
-                using ManagementObjectSearcher shellSearch = new(
-                    $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {parentPid}");
+                if (level == 0)
+                    info.ParentPid = parentPid;
 
-                foreach (ManagementObject shellObj in shellSearch.Get())
+                if (IsShellProcess(parentPid))
                 {
-                    info.ShellPid = Convert.ToInt32(shellObj["ParentProcessId"]);
+                    info.ShellPid = parentPid;
+                    return;
                 }
+
+                currentPid = parentPid;
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"PopulateProcessTree error: {ex.Message}");
         }
+    }
+
+    private static int GetParentPid(int pid)
+    {
+        using ManagementObjectSearcher searcher = new(
+            $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {pid}");
+        foreach (ManagementObject obj in searcher.Get())
+        {
+            return Convert.ToInt32(obj["ParentProcessId"]);
+        }
+        return 0;
+    }
+
+    private static bool IsShellProcess(int pid)
+    {
+        try
+        {
+            using ManagementObjectSearcher searcher = new(
+                $"SELECT Name FROM Win32_Process WHERE ProcessId = {pid}");
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                string? name = obj["Name"]?.ToString();
+                return name != null && ShellProcessNames.Contains(name);
+            }
+        }
+        catch { /* Process may have exited */ }
+        return false;
     }
 
     private static void ReadWorkspaceMetadata(CopilotSessionInfo info)

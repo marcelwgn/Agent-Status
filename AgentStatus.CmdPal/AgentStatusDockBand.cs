@@ -16,14 +16,15 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
 {
     private readonly CopilotSessionManager _copilotManager;
     private readonly ClaudeCodeSessionManager _claudeManager;
+    private readonly object _updateLock = new();
 
-    public AgentStatusDockBand()
+    public AgentStatusDockBand(CopilotSessionManager copilotManager, ClaudeCodeSessionManager claudeManager)
         : base([], "com.agentstatus.sessions", "Agent Status")
     {
         Icon = SessionIcons.Provider;
 
-        _copilotManager = new CopilotSessionManager();
-        _claudeManager = new ClaudeCodeSessionManager();
+        _copilotManager = copilotManager;
+        _claudeManager = claudeManager;
 
         _copilotManager.SessionsChanged += (_, _) => UpdateItems();
         _claudeManager.SessionsChanged += (_, _) => UpdateItems();
@@ -38,38 +39,48 @@ internal sealed partial class AgentStatusDockBand : WrappedDockItem
 
     private void UpdateItems()
     {
-        List<IListItem> items = [];
-
-        foreach (AISessionInfo session in _copilotManager.Sessions)
+        lock (_updateLock)
         {
-            items.Add(new ListItem(new SessionFocusCommand(session))
-            {
-                Title = session.DisplayName,
-                Subtitle = FormatState(session),
-                Icon = SessionIcons.GetIconForState(session.State),
-            });
-        }
+            List<IListItem> items = [];
+            HashSet<string> seen = [];
 
-        foreach (AISessionInfo session in _claudeManager.Sessions)
-        {
-            items.Add(new ListItem(new SessionFocusCommand(session))
+            foreach (AISessionInfo session in _copilotManager.Sessions)
             {
-                Title = session.DisplayName,
-                Subtitle = FormatState(session),
-                Icon = SessionIcons.GetIconForState(session.State),
-            });
-        }
+                if (!seen.Add(session.SessionId))
+                    continue;
 
-        if (items.Count == 0)
-        {
-            items.Add(new ListItem(new NoOpCommand())
+                items.Add(new ListItem(new SessionFocusCommand(session))
+                {
+                    Title = session.DisplayName,
+                    Subtitle = FormatState(session),
+                    Icon = SessionIcons.GetIconForState(session.State),
+                });
+            }
+
+            foreach (AISessionInfo session in _claudeManager.Sessions)
             {
-                Subtitle = "No sessions",
-                Icon = SessionIcons.NoSession,
-            });
-        }
+                if (!seen.Add(session.SessionId))
+                    continue;
 
-        Items = items.ToArray();
+                items.Add(new ListItem(new SessionFocusCommand(session))
+                {
+                    Title = session.DisplayName,
+                    Subtitle = FormatState(session),
+                    Icon = SessionIcons.GetIconForState(session.State),
+                });
+            }
+
+            if (items.Count == 0)
+            {
+                items.Add(new ListItem(new NoOpCommand())
+                {
+                    Subtitle = "No sessions",
+                    Icon = SessionIcons.NoSession,
+                });
+            }
+
+            Items = items.ToArray();
+        }
     }
 
     private static string FormatState(AISessionInfo session)
@@ -110,7 +121,7 @@ internal sealed partial class SessionFocusCommand : InvokableCommand
 
     public override ICommandResult Invoke()
     {
-        Task.Run(() => ShowWindowHelper.BringToFront(_session.ShellPid));
+        Task.Run(async () => await ShowWindowHelper.BringToFrontAsync(_session.ShellPid));
         return CommandResult.Dismiss();
     }
 }

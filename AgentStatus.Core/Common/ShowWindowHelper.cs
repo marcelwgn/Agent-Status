@@ -96,7 +96,7 @@ public static class ShowWindowHelper
 
             List<(int pid, DateTime created)> shells = new();
             using (ManagementObjectSearcher searcher = new(
-                $"SELECT ProcessId, CreationDate FROM Win32_Process WHERE ParentProcessId = {terminalPid} AND (Name = 'pwsh.exe' OR Name = 'powershell.exe' OR Name = 'cmd.exe')"))
+                $"SELECT ProcessId, CreationDate FROM Win32_Process WHERE ParentProcessId = {terminalPid} AND (Name = 'pwsh.exe' OR Name = 'powershell.exe' OR Name = 'cmd.exe' OR Name = 'bash.exe' OR Name = 'wsl.exe')"))
             {
                 foreach (ManagementObject obj in searcher.Get())
                 {
@@ -123,24 +123,68 @@ public static class ShowWindowHelper
     }
 
     /// <summary>
-    /// Uses wt.exe to switch to the specified tab index.
+    /// Switches to the specified tab in the foreground terminal window.
+    /// Uses Ctrl+Alt+{N} keyboard shortcuts (default Windows Terminal bindings)
+    /// sent directly to the foreground window, avoiding the wt.exe process
+    /// launch which can't reliably target a specific terminal window.
     /// </summary>
     public static void SwitchTerminalTab(int tabIndex)
     {
-        try
+        if (tabIndex < 0)
+            return;
+
+        if (tabIndex < 9)
         {
-            ProcessStartInfo psi = new()
-            {
-                FileName = "wt.exe",
-                Arguments = $"-w 0 focus-tab -t {tabIndex}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            Process.Start(psi);
+            SendTabSwitchKeystrokes(tabIndex);
         }
-        catch (Exception ex)
+        else
         {
-            Debug.WriteLine($"SwitchTerminalTab error: {ex.Message}");
+            // Ctrl+Alt+{N} only covers tabs 1-9; fall back to wt.exe for beyond that
+            try
+            {
+                ProcessStartInfo psi = new()
+                {
+                    FileName = "wt.exe",
+                    Arguments = $"focus-tab -t {tabIndex}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"SwitchTerminalTab error: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends Ctrl+Alt+{N} to switch to tab N (1-indexed) in Windows Terminal.
+    /// </summary>
+    private static void SendTabSwitchKeystrokes(int tabIndex)
+    {
+        // VK_1 (0x31) through VK_9 (0x39) — tab index 0 maps to Ctrl+Alt+1
+        VIRTUAL_KEY numKey = (VIRTUAL_KEY)(0x31 + tabIndex);
+
+        INPUT[] inputs = new INPUT[6];
+        int idx = 0;
+
+        // Key down: Ctrl, Alt, number
+        inputs[idx++] = MakeKeyInput(VIRTUAL_KEY.VK_CONTROL, false);
+        inputs[idx++] = MakeKeyInput(VIRTUAL_KEY.VK_MENU, false);
+        inputs[idx++] = MakeKeyInput(numKey, false);
+
+        // Key up: number, Alt, Ctrl (reverse order)
+        inputs[idx++] = MakeKeyInput(numKey, true);
+        inputs[idx++] = MakeKeyInput(VIRTUAL_KEY.VK_MENU, true);
+        inputs[idx++] = MakeKeyInput(VIRTUAL_KEY.VK_CONTROL, true);
+
+        unsafe
+        {
+            fixed (INPUT* pInputs = inputs)
+            {
+                PInvoke.SendInput((uint)inputs.Length, pInputs, Marshal.SizeOf<INPUT>());
+            }
         }
     }
 
@@ -148,6 +192,16 @@ public static class ShowWindowHelper
     /// Brings the terminal window for the given shell PID to the foreground and switches to its tab.
     /// </summary>
     public static void BringToFront(int shellPid)
+    {
+        BringToFrontAsync(shellPid).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Async version of <see cref="BringToFront"/>. Adds a short delay between
+    /// foregrounding the window and switching tabs so that <c>wt.exe -w 0</c>
+    /// targets the correct (now-MRU) terminal window.
+    /// </summary>
+    public static async Task BringToFrontAsync(int shellPid)
     {
         HWND hwnd = new((nint)FindTerminalWindow(shellPid));
         if (hwnd != HWND.Null)
@@ -160,7 +214,12 @@ public static class ShowWindowHelper
 
             int tabIndex = FindTabIndex(shellPid);
             if (tabIndex >= 0)
+            {
+                // Allow the OS to register the terminal as the MRU window
+                // before wt.exe resolves -w 0.
+                await Task.Delay(200);
                 SwitchTerminalTab(tabIndex);
+            }
         }
         else
         {
