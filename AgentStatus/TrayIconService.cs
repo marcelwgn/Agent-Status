@@ -19,8 +19,10 @@ internal sealed partial class TrayIconService
 
     private Window? _window;
     private HWND _hwnd;
+    private nint _originalWndProcPtr;
     private WNDPROC? _originalWndProc;
     private WNDPROC? _trayWndProc;
+    private bool _wndProcRestored;
     private NOTIFYICONDATAW? _trayIconData;
     private DestroyIconSafeHandle? _largeIcon;
     private DestroyMenuSafeHandle? _popupMenu;
@@ -47,7 +49,11 @@ internal sealed partial class TrayIconService
 
                 _trayWndProc = WindowProc;
                 nint hotKeyPrcPointer = Marshal.GetFunctionPointerForDelegate(_trayWndProc);
-                _originalWndProc = Marshal.GetDelegateForFunctionPointer<WNDPROC>(PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, hotKeyPrcPointer));
+                _originalWndProcPtr = PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, hotKeyPrcPointer);
+                if (_originalWndProcPtr != 0)
+                {
+                    _originalWndProc = Marshal.GetDelegateForFunctionPointer<WNDPROC>(_originalWndProcPtr);
+                }
             }
 
             if (_trayIconData is null)
@@ -108,10 +114,22 @@ internal sealed partial class TrayIconService
 
         if (_window is not null)
         {
+            RestoreWindowProc();
             _window.Close();
             _window = null;
             _hwnd = HWND.Null;
         }
+    }
+
+    private void RestoreWindowProc()
+    {
+        if (_wndProcRestored || _originalWndProcPtr == 0 || _hwnd == HWND.Null)
+        {
+            return;
+        }
+
+        PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, _originalWndProcPtr);
+        _wndProcRestored = true;
     }
 
     private DestroyIconSafeHandle GetAppIconHandle()
@@ -188,6 +206,8 @@ internal sealed partial class TrayIconService
                 break;
         }
 
-        return PInvoke.CallWindowProc(_originalWndProc, hwnd, uMsg, wParam, lParam);
+        return _originalWndProc != null
+            ? PInvoke.CallWindowProc(_originalWndProc, hwnd, uMsg, wParam, lParam)
+            : (LRESULT)0;
     }
 }

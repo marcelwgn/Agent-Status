@@ -16,9 +16,6 @@ namespace Microsoft.CmdPal.Common.Helpers;
 /// </summary>
 public sealed class TaskbarWidgetDetector : IDisposable
 {
-    private IUIAutomation? _automation;
-    private IUIAutomationCondition? _trueCondition;
-    private IUIAutomationCacheRequest? _cacheRequest;
     private bool _disposed;
     private int _scanning;
 
@@ -110,11 +107,17 @@ public sealed class TaskbarWidgetDetector : IDisposable
             return (taskButtonsRightEdge, trayLeftEdge);
         }
 
-        EnsureAutomation();
+        IUIAutomation automation = (IUIAutomation)new CUIAutomation();
+        IUIAutomationCondition trueCondition = automation.CreateTrueCondition();
+        IUIAutomationCacheRequest cacheRequest = automation.CreateCacheRequest();
+        cacheRequest.AddProperty(UIA_PROPERTY_ID.UIA_BoundingRectanglePropertyId);
 
-        IUIAutomationElement bridgeElement = _automation!.ElementFromHandle(xamlBridge);
+        IUIAutomationElement bridgeElement = automation.ElementFromHandle(xamlBridge);
         if (bridgeElement == null)
         {
+            Marshal.ReleaseComObject(cacheRequest);
+            Marshal.ReleaseComObject(trueCondition);
+            Marshal.ReleaseComObject(automation);
             return (taskButtonsRightEdge, trayLeftEdge);
         }
 
@@ -126,6 +129,8 @@ public sealed class TaskbarWidgetDetector : IDisposable
 
             ScanForOccupiedElements(
                 bridgeElement,
+                trueCondition,
+                cacheRequest,
                 taskButtonsRightEdge,
                 trayLeftEdge,
                 taskbarWidth,
@@ -139,6 +144,9 @@ public sealed class TaskbarWidgetDetector : IDisposable
         finally
         {
             Marshal.ReleaseComObject(bridgeElement);
+            Marshal.ReleaseComObject(cacheRequest);
+            Marshal.ReleaseComObject(trueCondition);
+            Marshal.ReleaseComObject(automation);
         }
     }
 
@@ -148,6 +156,8 @@ public sealed class TaskbarWidgetDetector : IDisposable
     /// </summary>
     private void ScanForOccupiedElements(
         IUIAutomationElement parent,
+        IUIAutomationCondition trueCondition,
+        IUIAutomationCacheRequest cacheRequest,
         int gapLeft,
         int gapRight,
         int taskbarWidth,
@@ -164,7 +174,7 @@ public sealed class TaskbarWidgetDetector : IDisposable
         IUIAutomationElementArray? children;
         try
         {
-            children = parent.FindAllBuildCache(TreeScope.TreeScope_Children, _trueCondition!, _cacheRequest!);
+            children = parent.FindAllBuildCache(TreeScope.TreeScope_Children, trueCondition, cacheRequest);
         }
         catch (COMException)
         {
@@ -210,7 +220,7 @@ public sealed class TaskbarWidgetDetector : IDisposable
                 if (w >= taskbarWidth - MinElementWidth)
                 {
                     ScanForOccupiedElements(
-                        child, gapLeft, gapRight, taskbarWidth,
+                        child, trueCondition, cacheRequest, gapLeft, gapRight, taskbarWidth,
                         gapMidpoint, ref leftBound, ref rightBound, depth + 1);
                     continue;
                 }
@@ -282,41 +292,9 @@ public sealed class TaskbarWidgetDetector : IDisposable
         return (0, 0);
     }
 
-    private void EnsureAutomation()
-    {
-        if (_automation == null)
-        {
-            _automation = (IUIAutomation)new CUIAutomation();
-            _trueCondition = _automation.CreateTrueCondition();
-            _cacheRequest = _automation.CreateCacheRequest();
-            _cacheRequest.AddProperty(UIA_PROPERTY_ID.UIA_BoundingRectanglePropertyId);
-        }
-    }
-
     /// <inheritdoc />
     public void Dispose()
     {
-        if (!_disposed)
-        {
-            if (_cacheRequest != null)
-            {
-                Marshal.ReleaseComObject(_cacheRequest);
-                _cacheRequest = null;
-            }
-
-            if (_trueCondition != null)
-            {
-                Marshal.ReleaseComObject(_trueCondition);
-                _trueCondition = null;
-            }
-
-            if (_automation != null)
-            {
-                Marshal.ReleaseComObject(_automation);
-                _automation = null;
-            }
-
-            _disposed = true;
-        }
+        _disposed = true;
     }
 }

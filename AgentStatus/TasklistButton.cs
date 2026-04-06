@@ -66,24 +66,28 @@ public sealed partial class Tasklist : IDisposable
         HWND tasklistHwnd = PInvoke.FindWindow("Shell_TrayWnd", null);
         if (tasklistHwnd.IsNull)
         {
+            ClearTaskbarElement();
             return;
         }
 
         tasklistHwnd = PInvoke.FindWindowEx(tasklistHwnd, HWND.Null, "ReBarWindow32", null);
         if (tasklistHwnd.IsNull)
         {
+            ClearTaskbarElement();
             return;
         }
 
         tasklistHwnd = PInvoke.FindWindowEx(tasklistHwnd, HWND.Null, "MSTaskSwWClass", null);
         if (tasklistHwnd.IsNull)
         {
+            ClearTaskbarElement();
             return;
         }
 
         tasklistHwnd = PInvoke.FindWindowEx(tasklistHwnd, HWND.Null, "MSTaskListWClass", null);
         if (tasklistHwnd.IsNull)
         {
+            ClearTaskbarElement();
             return;
         }
 
@@ -95,7 +99,7 @@ public sealed partial class Tasklist : IDisposable
         }
 
         // Get the automation element for the taskbar
-        _element = _automation.ElementFromHandle(tasklistHwnd);
+        ReplaceTaskbarElement(_automation.ElementFromHandle(tasklistHwnd));
     }
 
     /// <summary>
@@ -252,6 +256,21 @@ public sealed partial class Tasklist : IDisposable
         }
     }
 
+    private void ReplaceTaskbarElement(IUIAutomationElement? element)
+    {
+        ClearTaskbarElement();
+        _element = element;
+    }
+
+    private void ClearTaskbarElement()
+    {
+        if (_element != null)
+        {
+            Marshal.ReleaseComObject(_element);
+            _element = null;
+        }
+    }
+
     /// <summary>
     /// Throws an ObjectDisposedException if the object has been disposed.
     /// </summary>
@@ -278,8 +297,7 @@ public sealed partial class Tasklist : IDisposable
 
             if (_element != null)
             {
-                Marshal.ReleaseComObject(_element);
-                _element = null;
+                ClearTaskbarElement();
             }
 
             if (_automation != null)

@@ -30,14 +30,20 @@ namespace AgentStatus
         private const int WM_DESTROY = 0x0002;
 
         // Store the original WndProc
-        private readonly WNDPROC? _originalWndProc;
-        private readonly WNDPROC? _hotkeyWndProc;
+        private WNDPROC? _originalWndProc;
+        private WNDPROC? _hotkeyWndProc;
+        private nint _originalWndProcPtr;
+        private bool _wndProcRestored;
 
         // Debouncer to throttle UpdateLayoutForDPI calls
         private readonly DispatcherQueueTimer _updateLayoutDebouncer;
         private readonly DispatcherQueueTimer _updateTaskbarButtonsTimer;
+        private readonly DispatcherQueueTimer _explorerRecoveryTimer;
 
         private double _lastContentSpace = 0;
+        private bool _isClosing;
+        private bool _isExplicitQuit;
+        private DateTimeOffset _explorerInteractionResumeAt;
 
         private readonly BandsItemsControl? _bandsControl;
 
@@ -61,6 +67,20 @@ namespace AgentStatus
             _updateTaskbarButtonsTimer.Interval = TimeSpan.FromMilliseconds(500);
             _updateTaskbarButtonsTimer.Start();
 
+            _explorerRecoveryTimer = DispatcherQueue.CreateTimer();
+            _explorerRecoveryTimer.IsRepeating = false;
+            _explorerRecoveryTimer.Tick += (_, _) =>
+            {
+                _explorerRecoveryTimer.Stop();
+                if (_isClosing)
+                {
+                    return;
+                }
+
+                _updateTaskbarButtonsTimer.Start();
+                MoveToTaskbar();
+            };
+
             this.VisibilityChanged += MainWindow_VisibilityChanged;
             // this.ItemsBar.SizeChanged += ItemsBar_SizeChanged;
             //this.Root.SizeChanged += ItemsBar_SizeChanged;
@@ -80,7 +100,11 @@ namespace AgentStatus
             // and our **WindProc will explode**.
             _hotkeyWndProc = CustomWndProc;
             nint hotKeyPrcPointer = Marshal.GetFunctionPointerForDelegate(_hotkeyWndProc);
-            _originalWndProc = Marshal.GetDelegateForFunctionPointer<WNDPROC>(PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, hotKeyPrcPointer));
+            _originalWndProcPtr = PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, hotKeyPrcPointer);
+            if (_originalWndProcPtr != 0)
+            {
+                _originalWndProc = Marshal.GetDelegateForFunctionPointer<WNDPROC>(_originalWndProcPtr);
+            }
 
             ExtendsContentIntoTitleBar = true;
             _appWindow.TitleBar?.PreferredHeightOption = TitleBarHeightOption.Collapsed;
@@ -92,6 +116,11 @@ namespace AgentStatus
 
         private void ItemsBar_SizeChangedAsync(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
         {
+            if (_isClosing)
+            {
+                return;
+            }
+
             ClipWindow().ConfigureAwait(false);
         }
 
@@ -105,41 +134,65 @@ namespace AgentStatus
             if (uMsg == WM_DISPLAYCHANGE)
             {
                 // Use dispatcher to ensure we're on the UI thread
-                DispatcherQueue.TryEnqueue(() => MoveToTaskbar());
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    ScheduleExplorerRecovery(TimeSpan.FromSeconds(1));
+                    TriggerDebouncedLayoutUpdate();
+                });
             }
             else if (uMsg == WM_SETTINGCHANGE)
             {
                 if (wParam == (uint)SYSTEM_PARAMETERS_INFO_ACTION.SPI_SETWORKAREA)
                 {
                     // Use debounced call to throttle rapid successive calls
-                    DispatcherQueue.TryEnqueue(() => TriggerDebouncedLayoutUpdate());
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        ScheduleExplorerRecovery(TimeSpan.FromSeconds(1));
+                        TriggerDebouncedLayoutUpdate();
+                    });
                 }
             }
             else if (uMsg == WM_DESTROY)
             {
-                // IF WE GOT THIS, WE SHOULD EAT IT
-                // BUT WE DON'T
-                // Somewhere in the stack, XAML just removes our whole UI tree from the
-                // DesktopWindowXamlSource, and we're in oblivion. 
-                return (LRESULT)0;
+                PrepareForClose();
             }
-            //else if (uMsg == WM_TASKBAR_RESTART)
-            //{
-            //    Debug.WriteLine("WM_TASKBAR_RESTART");
-            //    DispatcherQueue.TryEnqueue(async () => await UpdateLayoutForDPI());
-            //}
+            else if (uMsg == WM_TASKBAR_RESTART)
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    ScheduleExplorerRecovery(TimeSpan.FromSeconds(2));
+                    TriggerDebouncedLayoutUpdate();
+                });
+            }
 
             // Call the original window procedure for all messages
-            return PInvoke.CallWindowProc(_originalWndProc, hwnd, uMsg, wParam, lParam);
+            return _originalWndProc != null
+                ? PInvoke.CallWindowProc(_originalWndProc, hwnd, uMsg, wParam, lParam)
+                : (LRESULT)0;
         }
 
         private async Task UpdateLayoutForDPI()
         {
+            if (_isClosing || IsExplorerInteractionSuspended)
+            {
+                return;
+            }
+
             MoveToTaskbar();
 
             await Task.Delay(200);
+            if (_isClosing)
+            {
+                return;
+            }
+
             MainContent.Padding = new Thickness(1);
             await Task.Delay(10);
+            if (_isClosing)
+            {
+                return;
+            }
+
             MainContent.Padding = new Thickness(0);
         }
 
@@ -148,52 +201,73 @@ namespace AgentStatus
             _updateLayoutDebouncer.Debounce(
                 () =>
                 {
-                    UpdateLayoutForDPI();
+                    _ = UpdateLayoutForDPI();
                 },
                 interval: TimeSpan.FromMilliseconds(200),
                 immediate: false);
 
         }
 
+        private bool IsExplorerInteractionSuspended => DateTimeOffset.UtcNow < _explorerInteractionResumeAt;
+
+        private void ScheduleExplorerRecovery(TimeSpan delay)
+        {
+            if (_isClosing)
+            {
+                return;
+            }
+
+            _explorerInteractionResumeAt = DateTimeOffset.UtcNow.Add(delay);
+            _updateTaskbarButtonsTimer.Stop();
+            _explorerRecoveryTimer.Stop();
+            _explorerRecoveryTimer.Interval = delay;
+            _explorerRecoveryTimer.Start();
+        }
+
         private void MoveToTaskbar()
         {
-            if (_appWindow is null)
+            if (_appWindow is null || _isClosing || IsExplorerInteractionSuspended)
             {
                 return;
             }
 
 
             HWND thisWindow = _hwnd;
+            if (thisWindow == HWND.Null)
+            {
+                return;
+            }
 
             HWND taskbarWindow = PInvoke.FindWindow("Shell_TrayWnd", null);
-            HWND reBarWindow = PInvoke.FindWindowEx(taskbarWindow, HWND.Null, "ReBarWindow32", null);
+            if (taskbarWindow.IsNull)
+            {
+                return;
+            }
 
             WINDOW_STYLE oldStyle = (WINDOW_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
-            WINDOW_STYLE oldStyleButNotPopup = oldStyle & (~WINDOW_STYLE.WS_POPUP);
-            WINDOW_STYLE nowAddChild = oldStyleButNotPopup | WINDOW_STYLE.WS_CHILD;
-            // Strip frame/border styles so the full 48px is client area
-            nowAddChild &= ~(WINDOW_STYLE.WS_CAPTION | WINDOW_STYLE.WS_THICKFRAME);
+            WINDOW_STYLE overlayStyle = (oldStyle | WINDOW_STYLE.WS_POPUP) & ~WINDOW_STYLE.WS_CHILD;
+            overlayStyle &= ~(WINDOW_STYLE.WS_CAPTION | WINDOW_STYLE.WS_THICKFRAME);
+            PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)overlayStyle);
 
-            PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)nowAddChild);
-
-            // Prevent this window from appearing as a regular app on the taskbar
+            // Keep the window as a top-level tool window overlay instead of
+            // parenting it into Explorer's taskbar HWND, which can deadlock or
+            // destabilize Explorer during display topology changes.
             WINDOW_EX_STYLE exStyle = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
             exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW;
             exStyle &= ~WINDOW_EX_STYLE.WS_EX_APPWINDOW;
             PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
+            PInvoke.SetParent(thisWindow, HWND.Null);
 
-            PInvoke.SetParent(thisWindow, taskbarWindow);
-
-            RECT taskbarRect = new();
-            PInvoke.GetWindowRect(taskbarWindow, out taskbarRect);
-            RECT reBarRect= new();
-            PInvoke.GetWindowRect(reBarWindow, out reBarRect);
+            if (!PInvoke.GetWindowRect(taskbarWindow, out RECT taskbarRect))
+            {
+                return;
+            }
 
             RECT newWindowRect = new();
             newWindowRect.left = taskbarRect.left;
-            newWindowRect.top = 0; // Start at the very top of the taskbar
+            newWindowRect.top = taskbarRect.top;
             newWindowRect.right = newWindowRect.left + (taskbarRect.right - taskbarRect.left);
-            newWindowRect.bottom = taskbarRect.bottom - taskbarRect.top; // Full taskbar height
+            newWindowRect.bottom = taskbarRect.bottom;
             PInvoke.SetWindowRgn(_hwnd, HRGN.Null, true);
 
             PInvoke.SetWindowPos(thisWindow,
@@ -210,6 +284,11 @@ namespace AgentStatus
 
         private bool UpdateTaskbarButtons()
         {
+            if (_isClosing || IsExplorerInteractionSuspended)
+            {
+                return false;
+            }
+
             _tasklist.Update();
             float scaleFactor = this.GetDpiForWindow() / 96.0f;
 
@@ -229,8 +308,17 @@ namespace AgentStatus
             }
 
             HWND taskBarHwnd = PInvoke.FindWindow("Shell_TrayWnd", null);
+            if (taskBarHwnd.IsNull)
+            {
+                return false;
+            }
+
             HWND notificationHwnd = PInvoke.FindWindowEx(taskBarHwnd, HWND.Null, "TrayNotifyWnd", null);
-            PInvoke.GetWindowRect(notificationHwnd, out RECT trayRect);
+            RECT trayRect = new();
+            if (notificationHwnd.IsNull || !PInvoke.GetWindowRect(notificationHwnd, out trayRect))
+            {
+                return false;
+            }
 
             int notificationAreaInPixels = trayRect.Width;
             float notificationAreaInDips = notificationAreaInPixels / scaleFactor;
@@ -277,12 +365,22 @@ namespace AgentStatus
 
         private async Task ClipWindow(bool onlyIfButtonsChanged = false)
         {
+            if (_isClosing || IsExplorerInteractionSuspended)
+            {
+                return;
+            }
+
             bool taskbarChanged = UpdateTaskbarButtons();
             if (onlyIfButtonsChanged && !taskbarChanged)
             {
                 return;
             }
             await Task.Delay(100);
+            if (_isClosing || IsExplorerInteractionSuspended || _hwnd == HWND.Null)
+            {
+                return;
+            }
+
             float scaleFactor = this.GetDpiForWindow() / 96.0f;
             int height48px = (int)(48 * scaleFactor);
 
@@ -294,14 +392,19 @@ namespace AgentStatus
                 PInvoke.GetWindowRect(taskbarWindow, out RECT taskbarRect);
                 PInvoke.SetWindowPos(_hwnd,
                     HWND.Null,
-                    currentRect.left,
-                    0,
+                    taskbarRect.left,
+                    taskbarRect.top,
                     taskbarRect.Width,
                     height48px,
                     SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
 
             FrameworkElement clipToElement = MainContent;
+            if (clipToElement.ActualWidth <= 0)
+            {
+                return;
+            }
+
             Windows.Foundation.Point position = clipToElement.TransformToVisual(this.Content).TransformPoint(new());
             RECT scaledBounds = new()
             {
@@ -313,54 +416,79 @@ namespace AgentStatus
 
             Windows.Win32.Graphics.Gdi.HRGN hrgn= PInvoke.CreateRectRgn(scaledBounds.left,
                     scaledBounds.top, scaledBounds.right, scaledBounds.bottom);
-            PInvoke.SetWindowRgn(_hwnd, hrgn, true);
+            int applied = PInvoke.SetWindowRgn(_hwnd, hrgn, true);
+            if (applied == 0)
+            {
+                PInvoke.DeleteObject(hrgn);
+            }
+        }
+
+        private void PrepareForClose()
+        {
+            if (_isClosing)
+            {
+                return;
+            }
+
+            _isClosing = true;
+            _updateTaskbarButtonsTimer.Stop();
+            _updateLayoutDebouncer?.Stop();
+            _explorerRecoveryTimer.Stop();
+            RestoreOriginalWindowProc();
+        }
+
+        private void RestoreOriginalWindowProc()
+        {
+            if (_wndProcRestored || _originalWndProcPtr == 0 || _hwnd == HWND.Null)
+            {
+                return;
+            }
+
+            PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, _originalWndProcPtr);
+            _wndProcRestored = true;
         }
 
         public void Receive(TaskbarRestartMessage message)
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                // I cannot for the life of me get the window to reparent to the new taskbar window. 
-                // Maybe I'm just always doing this too fast?
-                // I don't know. 
-                // Every time we get this, it seems like the content in the ContentAreaPresenter is already null
-                // and our ActualWidth is now 0, and the DPI is 0, so we get no size
-                // 
-                // This is just not getting fixed during a hackathon
-
-                ////this.Hide();
-                //PInvoke.SetParent(_hwnd, HWND.Null);
-                ////this.Show();
-                //await Task.Delay(3000);
-                //await UpdateLayoutForDPI();
-
-                //this.Closed -= MainWindow_Closed;
-                //_trayIconService.Destroy();
-                //MainWindow newWindow = new();
-                //newWindow.Activate();
-                //WeakReferenceMessenger.Default.UnregisterAll(this); // TODO! not AOT safe
-
-                //this.CoreWindow.Close();
-
-                this.Close();
+                ScheduleExplorerRecovery(TimeSpan.FromSeconds(2));
+                TriggerDebouncedLayoutUpdate();
             });
 
         }
 
         public void Receive(QuitMessage message)
         {
+            _isExplicitQuit = true;
             this.VisibilityChanged -= MainWindow_VisibilityChanged;
-            this.Root.SizeChanged -= ItemsBar_SizeChangedAsync;
+            this.MainContent.SizeChanged -= ItemsBar_SizeChangedAsync;
 
             // Stop the debouncer to prevent any pending calls
-            _updateLayoutDebouncer?.Stop();
+            PrepareForClose();
 
             DispatcherQueue.TryEnqueue(() => Close());
         }
 
         private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
+            PrepareForClose();
+            _tasklist.Dispose();
+            _widgetDetector.Dispose();
             _trayIconService.Destroy();
+
+            if (!_isExplicitQuit)
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (Application.Current is App app)
+                    {
+                        app.ShowMainWindow();
+                    }
+                });
+                return;
+            }
+
             Environment.Exit(0);
         }
     }
