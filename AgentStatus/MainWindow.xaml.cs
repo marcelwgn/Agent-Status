@@ -28,6 +28,10 @@ namespace AgentStatus
         private const int WM_DISPLAYCHANGE = 0x007E;
         private const int WM_SETTINGCHANGE = 0x001A;
         private const int WM_DESTROY = 0x0002;
+        private static readonly TimeSpan ExplorerRetryDelay = TimeSpan.FromSeconds(1);
+        private static readonly HWND HWND_TOPMOST = new HWND(-1);
+        private static readonly HWND HWND_NOTOPMOST = new HWND(-2);
+        private const uint GW_HWNDPREV = 3;
 
         // Store the original WndProc
         private WNDPROC? _originalWndProc;
@@ -39,6 +43,7 @@ namespace AgentStatus
         private readonly DispatcherQueueTimer _updateLayoutDebouncer;
         private readonly DispatcherQueueTimer _updateTaskbarButtonsTimer;
         private readonly DispatcherQueueTimer _explorerRecoveryTimer;
+        private readonly DispatcherQueueTimer _topmostWatchTimer;
 
         private double _lastContentSpace = 0;
         private bool _isClosing;
@@ -56,7 +61,7 @@ namespace AgentStatus
             // Comment this out if you don't want to use the extensible deskbands
             _bandsControl = DeskbandsControl;
 
-            _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this).ToInt32());
+            _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
 
             // Initialize debouncer with 300ms delay to throttle UpdateLayoutForDPI calls
             _updateLayoutDebouncer = DispatcherQueue.CreateTimer();
@@ -80,6 +85,18 @@ namespace AgentStatus
                 _updateTaskbarButtonsTimer.Start();
                 MoveToTaskbar();
             };
+
+            // The Win11 taskbar is built from sibling topmost windows
+            // (Shell_SecondaryTrayWnd, SystemTray_Main, ScreenrayOwnerWindow,
+            // tooltips, IME, ...). When the user interacts with the taskbar,
+            // Explorer re-asserts those as topmost which pushes them above us
+            // in the topmost group, covering our overlay (and stealing hits).
+            // This watcher detects that and re-ranks us back on top.
+            _topmostWatchTimer = DispatcherQueue.CreateTimer();
+            _topmostWatchTimer.IsRepeating = true;
+            _topmostWatchTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _topmostWatchTimer.Tick += (_, _) => RestoreTopmostIfCovered();
+            _topmostWatchTimer.Start();
 
             this.VisibilityChanged += MainWindow_VisibilityChanged;
             // this.ItemsBar.SizeChanged += ItemsBar_SizeChanged;
@@ -110,8 +127,6 @@ namespace AgentStatus
             _appWindow.TitleBar?.PreferredHeightOption = TitleBarHeightOption.Collapsed;
             MoveToTaskbar();
             _trayIconService.SetupTrayIcon(true);
-
-
         }
 
         private void ItemsBar_SizeChangedAsync(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
@@ -154,6 +169,15 @@ namespace AgentStatus
             }
             else if (uMsg == WM_DESTROY)
             {
+                if (!_isExplicitQuit)
+                {
+                    // XAML occasionally tries to tear us down on lifecycle
+                    // events (focus/visibility/backdrop). Swallow it so the
+                    // taskbar overlay keeps living instead of being recreated
+                    // in a flicker loop.
+                    return (LRESULT)0;
+                }
+
                 PrepareForClose();
             }
             else if (uMsg == WM_TASKBAR_RESTART)
@@ -238,9 +262,9 @@ namespace AgentStatus
                 return;
             }
 
-            HWND taskbarWindow = PInvoke.FindWindow("Shell_TrayWnd", null);
-            if (taskbarWindow.IsNull)
+            if (!TryGetTaskbarRect(out RECT taskbarRect))
             {
+                ScheduleExplorerRecovery(ExplorerRetryDelay);
                 return;
             }
 
@@ -252,16 +276,14 @@ namespace AgentStatus
             // Keep the window as a top-level tool window overlay instead of
             // parenting it into Explorer's taskbar HWND, which can deadlock or
             // destabilize Explorer during display topology changes.
+            // WS_EX_NOACTIVATE prevents taskbar interactions from yanking
+            // activation away from us and the shell from re-stacking us below
+            // Shell_TrayWnd. WS_EX_TOOLWINDOW keeps us out of Alt-Tab.
             WINDOW_EX_STYLE exStyle = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
-            exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW;
+            exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW | WINDOW_EX_STYLE.WS_EX_NOACTIVATE | WINDOW_EX_STYLE.WS_EX_TOPMOST;
             exStyle &= ~WINDOW_EX_STYLE.WS_EX_APPWINDOW;
             PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
             PInvoke.SetParent(thisWindow, HWND.Null);
-
-            if (!PInvoke.GetWindowRect(taskbarWindow, out RECT taskbarRect))
-            {
-                return;
-            }
 
             RECT newWindowRect = new();
             newWindowRect.left = taskbarRect.left;
@@ -271,7 +293,7 @@ namespace AgentStatus
             PInvoke.SetWindowRgn(_hwnd, HRGN.Null, true);
 
             PInvoke.SetWindowPos(thisWindow,
-                         HWND.Null,
+                         HWND_TOPMOST,
                          newWindowRect.left,
                          newWindowRect.top,
                          newWindowRect.Width,
@@ -279,6 +301,19 @@ namespace AgentStatus
                          SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
 
             ClipWindow().ConfigureAwait(false);
+        }
+
+        private static bool TryGetTaskbarRect(out RECT taskbarRect)
+        {
+            taskbarRect = default;
+
+            HWND taskbarWindow = PInvoke.FindWindow("Shell_TrayWnd", null);
+            if (taskbarWindow.IsNull)
+            {
+                return false;
+            }
+
+            return PInvoke.GetWindowRect(taskbarWindow, out taskbarRect);
         }
 
 
@@ -388,15 +423,28 @@ namespace AgentStatus
             PInvoke.GetWindowRect(_hwnd, out RECT currentRect);
             if (currentRect.Height != height48px)
             {
-                HWND taskbarWindow = PInvoke.FindWindow("Shell_TrayWnd", null);
-                PInvoke.GetWindowRect(taskbarWindow, out RECT taskbarRect);
+                if (!TryGetTaskbarRect(out RECT taskbarRect))
+                {
+                    ScheduleExplorerRecovery(ExplorerRetryDelay);
+                    return;
+                }
+
                 PInvoke.SetWindowPos(_hwnd,
-                    HWND.Null,
+                    HWND_TOPMOST,
                     taskbarRect.left,
                     taskbarRect.top,
                     taskbarRect.Width,
                     height48px,
                     SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            }
+            else
+            {
+                // Re-assert topmost without moving so taskbar interactions
+                // don't push us below Shell_TrayWnd.
+                PInvoke.SetWindowPos(_hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
 
             FrameworkElement clipToElement = MainContent;
@@ -421,6 +469,11 @@ namespace AgentStatus
             {
                 PInvoke.DeleteObject(hrgn);
             }
+
+            // Taskbar layout changes are a strong signal that the shell has
+            // restacked its own topmost windows above us. Re-rank ourselves
+            // back to the top of the topmost group so we stay visible.
+            RestoreTopmostIfCovered();
         }
 
         private void PrepareForClose()
@@ -434,7 +487,47 @@ namespace AgentStatus
             _updateTaskbarButtonsTimer.Stop();
             _updateLayoutDebouncer?.Stop();
             _explorerRecoveryTimer.Stop();
+            _topmostWatchTimer.Stop();
             RestoreOriginalWindowProc();
+        }
+
+        [DllImport("user32.dll")]
+        private static extern HWND GetWindow(HWND hwnd, uint uCmd);
+
+        /// <summary>
+        /// If another window is sitting above us in the topmost group (the
+        /// Win11 taskbar's tray windows do this whenever the user interacts
+        /// with the taskbar), re-rank ourselves back to the top.
+        /// </summary>
+        /// <remarks>
+        /// SetWindowPos(HWND_TOPMOST,...) is documented as a no-op when
+        /// WS_EX_TOPMOST is already set on the window, so it cannot push us
+        /// above sibling topmost windows. The HWND_NOTOPMOST -> HWND_TOPMOST
+        /// sequence demotes us out of the topmost band and re-inserts us at
+        /// the top, forcing the OS to recompute our z-order.
+        /// </remarks>
+        private void RestoreTopmostIfCovered()
+        {
+            if (_isClosing || _hwnd == HWND.Null)
+            {
+                return;
+            }
+
+            // Anything above us means we're covered (since we're WS_EX_TOPMOST,
+            // only other topmost windows can sit above us).
+            if (GetWindow(_hwnd, GW_HWNDPREV) == HWND.Null)
+            {
+                return;
+            }
+
+            PInvoke.SetWindowPos(_hwnd,
+                HWND_NOTOPMOST,
+                0, 0, 0, 0,
+                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            PInvoke.SetWindowPos(_hwnd,
+                HWND_TOPMOST,
+                0, 0, 0, 0,
+                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
         }
 
         private void RestoreOriginalWindowProc()
@@ -477,18 +570,9 @@ namespace AgentStatus
             _widgetDetector.Dispose();
             _trayIconService.Destroy();
 
-            if (!_isExplicitQuit)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (Application.Current is App app)
-                    {
-                        app.ShowMainWindow();
-                    }
-                });
-                return;
-            }
-
+            // We only get here on an explicit quit — WM_DESTROY is swallowed
+            // for any other reason in CustomWndProc to avoid a destroy/recreate
+            // flicker loop driven by XAML lifecycle events.
             Environment.Exit(0);
         }
     }
