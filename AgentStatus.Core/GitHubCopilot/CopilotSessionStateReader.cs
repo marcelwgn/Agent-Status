@@ -168,7 +168,9 @@ internal static class CopilotSessionStateReader
         // Derive state from last state-defining event
         bool hasWaitingTools = lastStateType == "assistant.message" && lastStateLine != null
             && HasWaitingToolRequestFromLine(lastStateLine);
-        info.State = DeriveState(lastStateType, hasWaitingTools);
+        bool assistantMessageHasNoTools = lastStateType == "assistant.message" && lastStateLine != null
+            && !HasAnyToolRequestFromLine(lastStateLine);
+        info.State = DeriveState(lastStateType, hasWaitingTools, assistantMessageHasNoTools);
 
         // task_complete is followed by hook/tool cleanup events and
         // assistant.turn_end, which would otherwise override the state
@@ -399,7 +401,21 @@ internal static class CopilotSessionStateReader
         catch { return false; }
     }
 
-    private static AISessionState DeriveState(string? eventType, bool hasWaitingTools)
+    private static bool HasAnyToolRequestFromLine(string jsonLine)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(jsonLine);
+            JsonElement data = doc.RootElement.TryGetProperty("data", out JsonElement d) ? d : doc.RootElement;
+            if (!data.TryGetProperty("toolRequests", out JsonElement toolRequests) ||
+                toolRequests.ValueKind != JsonValueKind.Array)
+                return false;
+            return toolRequests.GetArrayLength() > 0;
+        }
+        catch { return false; }
+    }
+
+    private static AISessionState DeriveState(string? eventType, bool hasWaitingTools, bool assistantMessageHasNoTools)
     {
         return eventType switch
         {
@@ -423,6 +439,8 @@ internal static class CopilotSessionStateReader
 
             "assistant.message" when hasWaitingTools
                 => AISessionState.WaitingForUser,
+            "assistant.message" when assistantMessageHasNoTools
+                => AISessionState.Idle,
             "assistant.message"
                 => AISessionState.Working,
 

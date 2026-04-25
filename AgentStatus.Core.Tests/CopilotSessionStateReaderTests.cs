@@ -18,7 +18,7 @@ public class CopilotSessionStateReaderTests
     [DataRow("""{"type":"tool.execution_complete","data":{"toolCallId":"tc1"}}""", AISessionState.Working)]
     [DataRow("""{"type":"tool.user_requested","data":{"toolCallId":"tc1"}}""", AISessionState.Working)]
     [DataRow("""{"type":"assistant.turn_start","data":{}}""", AISessionState.Working)]
-    [DataRow("""{"type":"assistant.message","data":{"content":"I'll help you with that"}}""", AISessionState.Working)]
+    [DataRow("""{"type":"assistant.message","data":{"content":"I'll help you with that"}}""", AISessionState.Idle)]
     [DataRow("""{"type":"assistant.message","data":{"toolRequests":[{"name":"grep","toolCallId":"tc4","arguments":{}}]}}""", AISessionState.Working)]
     [DataRow("""{"type":"hook.start","data":{"hookName":"pre-commit"}}""", AISessionState.Working)]
     [DataRow("""{"type":"hook.end","data":{"hookName":"pre-commit"}}""", AISessionState.Working)]
@@ -97,6 +97,60 @@ public class CopilotSessionStateReaderTests
     {
         string json = """{"type":"session.start","data":{"mode":"plan"}}""";
         Assert.AreEqual(AISessionMode.Plan, ReadState(json).Mode);
+    }
+
+    [TestMethod]
+    public void ReadSessionState_ResolvedAskUserFollowedByPlainAnswer_ReturnsIdle()
+    {
+        // Repro: a turn with an ask_user that the user answered, followed by a
+        // second turn that produces only a plain text answer (no toolRequests)
+        // and ends with assistant.turn_end. The session is now idle waiting for
+        // the next user message — should report Idle, not Working.
+        string jsonl = """
+            {"type":"user.message","data":{"content":"explain"}}
+            {"type":"assistant.turn_start","data":{"turnId":"0"}}
+            {"type":"assistant.message","data":{"messageId":"m1","toolRequests":[{"name":"ask_user","toolCallId":"au1","arguments":{"question":"clarify?"}}]}}
+            {"type":"tool.execution_start","data":{"toolCallId":"au1","toolName":"ask_user","arguments":{"question":"clarify?"}}}
+            {"type":"hook.start","data":{"hookName":"x"}}
+            {"type":"hook.end","data":{"hookName":"x"}}
+            {"type":"tool.execution_complete","data":{"toolCallId":"au1"}}
+            {"type":"assistant.turn_end","data":{"turnId":"0"}}
+            {"type":"assistant.turn_start","data":{"turnId":"1"}}
+            {"type":"assistant.message","data":{"messageId":"m2","content":"Here is the explanation."}}
+            {"type":"assistant.turn_end","data":{"turnId":"1"}}
+            """;
+        var info = ReadState(jsonl);
+        Assert.AreEqual(AISessionState.Idle, info.State);
+    }
+
+    [TestMethod]
+    public void ReadSessionState_FinalAssistantMessageWithoutToolRequests_ReturnsIdle()
+    {
+        // When the model produces a final answer (assistant.message with no
+        // toolRequests), the agent has finished its turn — the trailing
+        // assistant.turn_end is just a marker. If the tray polls in the brief
+        // window between these two events, it would otherwise see "Working"
+        // while the session is actually idle and waiting for the next user
+        // input. State should be Idle in this case.
+        string jsonl = """
+            {"type":"user.message","data":{"content":"hi"}}
+            {"type":"assistant.turn_start","data":{"turnId":"0"}}
+            {"type":"assistant.message","data":{"messageId":"m1","content":"Hello!","toolRequests":[]}}
+            """;
+        Assert.AreEqual(AISessionState.Idle, ReadState(jsonl).State);
+    }
+
+    [TestMethod]
+    public void ReadSessionState_AssistantMessageWithToolRequests_StaysWorking()
+    {
+        // Sanity check: assistant.message with non-ask tool requests still
+        // means the agent is mid-turn (about to invoke tools). Don't regress.
+        string jsonl = """
+            {"type":"user.message","data":{"content":"hi"}}
+            {"type":"assistant.turn_start","data":{"turnId":"0"}}
+            {"type":"assistant.message","data":{"messageId":"m1","toolRequests":[{"name":"grep","toolCallId":"t1","arguments":{}}]}}
+            """;
+        Assert.AreEqual(AISessionState.Working, ReadState(jsonl).State);
     }
 
     [TestMethod]
