@@ -144,27 +144,17 @@ namespace AgentStatus
         }
         private LRESULT CustomWndProc(HWND hwnd, uint uMsg, WPARAM wParam, LPARAM lParam)
         {
-            // Handle display change messages
             if (uMsg == WM_DISPLAYCHANGE)
             {
-                // Use dispatcher to ensure we're on the UI thread
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    ScheduleExplorerRecovery(TimeSpan.FromSeconds(1));
-                    TriggerDebouncedLayoutUpdate();
-                });
+                ScheduleLayoutRefresh(TimeSpan.FromSeconds(1));
             }
-            else if (uMsg == WM_SETTINGCHANGE)
+            else if (uMsg == WM_SETTINGCHANGE && wParam == (uint)SYSTEM_PARAMETERS_INFO_ACTION.SPI_SETWORKAREA)
             {
-                if (wParam == (uint)SYSTEM_PARAMETERS_INFO_ACTION.SPI_SETWORKAREA)
-                {
-                    // Use debounced call to throttle rapid successive calls
-                    DispatcherQueue.TryEnqueue(() =>
-                    {
-                        ScheduleExplorerRecovery(TimeSpan.FromSeconds(1));
-                        TriggerDebouncedLayoutUpdate();
-                    });
-                }
+                ScheduleLayoutRefresh(TimeSpan.FromSeconds(1));
+            }
+            else if (uMsg == WM_TASKBAR_RESTART)
+            {
+                ScheduleLayoutRefresh(TimeSpan.FromSeconds(2));
             }
             else if (uMsg == WM_DESTROY)
             {
@@ -179,19 +169,19 @@ namespace AgentStatus
 
                 PrepareForClose();
             }
-            else if (uMsg == WM_TASKBAR_RESTART)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    ScheduleExplorerRecovery(TimeSpan.FromSeconds(2));
-                    TriggerDebouncedLayoutUpdate();
-                });
-            }
 
-            // Call the original window procedure for all messages
             return _originalWndProc != null
                 ? PInvoke.CallWindowProc(_originalWndProc, hwnd, uMsg, wParam, lParam)
                 : (LRESULT)0;
+        }
+
+        private void ScheduleLayoutRefresh(TimeSpan delay)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ScheduleExplorerRecovery(delay);
+                TriggerDebouncedLayoutUpdate();
+            });
         }
 
         private async Task UpdateLayoutForDPI()
@@ -484,6 +474,9 @@ namespace AgentStatus
         [DllImport("user32.dll")]
         private static extern HWND GetAncestor(HWND hWnd, uint flag);
 
+        [DllImport("user32.dll")]
+        private static extern HWND GetWindow(HWND hwnd, uint uCmd);
+
         private const uint GA_ROOT = 2;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -494,10 +487,9 @@ namespace AgentStatus
         }
 
         /// <summary>
-        /// If our overlay rect is being painted over by another topmost
-        /// window, slide ourselves above the offender. Verifies coverage
-        /// via WindowFromPoint so we don't restack when the reorder didn't
-        /// actually affect us.
+        /// If our overlay rect is being painted over by another topmost window,
+        /// slide ourselves above the offender within the topmost band. Verifies
+        /// coverage via WindowFromPoint so we don't restack unnecessarily.
         /// </summary>
         private void RestoreTopmostIfCovered()
         {
@@ -506,30 +498,52 @@ namespace AgentStatus
                 return;
             }
 
-            // Self-check: if we somehow lost WS_EX_TOPMOST (e.g. an earlier
-            // SetWindowPos demoted us, or another process meddled), re-apply
-            // the overlay setup — that's the only safe way back into the band.
+            // Self-check: if we somehow lost WS_EX_TOPMOST, re-apply the overlay
+            // setup — that's the only safe way back into the topmost band.
             if (!IsTopmost(_hwnd))
             {
                 MoveToTaskbar();
                 return;
             }
 
-            if (!PInvoke.GetWindowRect(_hwnd, out RECT ourRect) ||
-                ourRect.right <= ourRect.left || ourRect.bottom <= ourRect.top)
+            if (!PInvoke.GetWindowRect(_hwnd, out RECT r) || r.Width <= 0 || r.Height <= 0)
             {
                 return;
             }
 
-            // Sample several points across our rect and ask the OS what the
-            // top-most window at each point is. If any sample isn't us (or
-            // a descendant of us), we're covered.
-            HWND offender = HWND.Null;
+            HWND offender = FindOffender(r);
+            if (offender == HWND.Null || !IsTopmost(offender))
+            {
+                return;
+            }
+
+            // Slide above the offender. Both the offender and the slot above it
+            // must be topmost: HWND_TOP or a non-topmost sibling would strip our
+            // WS_EX_TOPMOST and hide the app underneath Shell_TrayWnd. If no
+            // topmost slot exists above the offender, skip — shell will
+            // rebalance and we'll re-check next tick.
+            HWND insertAfter = GetWindow(offender, GW_HWNDPREV);
+            if (insertAfter == HWND.Null || !IsTopmost(insertAfter))
+            {
+                return;
+            }
+
+            const SET_WINDOW_POS_FLAGS flags = SET_WINDOW_POS_FLAGS.SWP_NOMOVE
+                | SET_WINDOW_POS_FLAGS.SWP_NOSIZE
+                | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
+                | SET_WINDOW_POS_FLAGS.SWP_NOSENDCHANGING
+                | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER;
+            PInvoke.SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0, flags);
+        }
+
+        private HWND FindOffender(RECT r)
+        {
+            int midY = r.top + r.Height / 2;
             POINT[] samples =
             {
-                new POINT { X = ourRect.left + 4,                       Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
-                new POINT { X = ourRect.right - 4,                      Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
-                new POINT { X = ourRect.left + (ourRect.right - ourRect.left) / 2, Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
+                new() { X = r.left + 4, Y = midY },
+                new() { X = r.right - 4, Y = midY },
+                new() { X = r.left + r.Width / 2, Y = midY },
             };
 
             foreach (POINT pt in samples)
@@ -541,54 +555,13 @@ namespace AgentStatus
                 }
 
                 HWND root = GetAncestor(atPoint, GA_ROOT);
-                if (root == _hwnd)
+                if (root != _hwnd)
                 {
-                    continue;
+                    return root;
                 }
-
-                offender = root;
-                break;
             }
 
-            if (offender == HWND.Null)
-            {
-                return;
-            }
-
-            // Only react if the offender is itself topmost. If it isn't, we
-            // would already be above it (we're WS_EX_TOPMOST) and any apparent
-            // coverage is a stale read; restacking against a non-topmost
-            // window would demote us out of the topmost band.
-            if (!IsTopmost(offender))
-            {
-                return;
-            }
-
-            // Slide above the offender by inserting ourselves after whatever
-            // currently sits directly above it. The candidate must also be
-            // topmost: passing HWND_TOP or a non-topmost sibling would strip
-            // our WS_EX_TOPMOST style and demote us underneath Shell_TrayWnd
-            // (i.e. hide our app entirely).
-            //
-            // If no topmost sibling exists above the offender, the offender is
-            // currently the highest-ranked topmost window — there is no safe
-            // in-band move to get above it. Skip; shell typically rebalances
-            // on its own and we'll get another reorder event with better
-            // candidates. This is preferable to flicker or to hiding ourselves.
-            HWND insertAfter = GetWindow(offender, GW_HWNDPREV);
-            if (insertAfter == HWND.Null || !IsTopmost(insertAfter))
-            {
-                return;
-            }
-
-            PInvoke.SetWindowPos(_hwnd,
-                insertAfter,
-                0, 0, 0, 0,
-                SET_WINDOW_POS_FLAGS.SWP_NOMOVE
-                    | SET_WINDOW_POS_FLAGS.SWP_NOSIZE
-                    | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
-                    | SET_WINDOW_POS_FLAGS.SWP_NOSENDCHANGING
-                    | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+            return HWND.Null;
         }
 
         private static bool IsTopmost(HWND hwnd)
@@ -601,9 +574,6 @@ namespace AgentStatus
             nint exStyle = PInvoke.GetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
             return ((uint)exStyle & (uint)WINDOW_EX_STYLE.WS_EX_TOPMOST) != 0;
         }
-
-        [DllImport("user32.dll")]
-        private static extern HWND GetWindow(HWND hwnd, uint uCmd);
 
         private void RestoreOriginalWindowProc()
         {
@@ -618,12 +588,7 @@ namespace AgentStatus
 
         public void Receive(TaskbarRestartMessage message)
         {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                ScheduleExplorerRecovery(TimeSpan.FromSeconds(2));
-                TriggerDebouncedLayoutUpdate();
-            });
-
+            ScheduleLayoutRefresh(TimeSpan.FromSeconds(2));
         }
 
         public void Receive(QuitMessage message)
