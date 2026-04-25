@@ -30,7 +30,6 @@ namespace AgentStatus
         private const int WM_DESTROY = 0x0002;
         private static readonly TimeSpan ExplorerRetryDelay = TimeSpan.FromSeconds(1);
         private static readonly HWND HWND_TOPMOST = new HWND(-1);
-        private static readonly HWND HWND_NOTOPMOST = new HWND(-2);
         private const uint GW_HWNDPREV = 3;
 
         // Store the original WndProc
@@ -86,14 +85,14 @@ namespace AgentStatus
                 MoveToTaskbar();
             };
 
-            // The Win11 taskbar is built from sibling topmost windows
-            // (Shell_SecondaryTrayWnd, SystemTray_Main, ScreenrayOwnerWindow,
-            // tooltips, IME, ...). When the user interacts with the taskbar,
-            // Explorer re-asserts those as topmost which pushes them above us
-            // in the topmost group, covering our overlay (and stealing hits).
-            // This watcher detects that and re-ranks us back on top.
+            // Polling z-order watcher. We tried a reactive
+            // SetWinEventHook(EVENT_OBJECT_REORDER) approach but it caused the
+            // overlay to be hidden after taskbar interaction in ways we
+            // couldn't reliably recover from. Polling at 500 ms with an
+            // edge-triggered SetWindowPos (only when actually covered, and
+            // only by inserting above the offender within the topmost band)
+            // is the last known-good behaviour.
             _topmostWatchTimer = DispatcherQueue.CreateTimer();
-            _topmostWatchTimer.IsRepeating = true;
             _topmostWatchTimer.Interval = TimeSpan.FromMilliseconds(500);
             _topmostWatchTimer.Tick += (_, _) => RestoreTopmostIfCovered();
             _topmostWatchTimer.Start();
@@ -262,46 +261,46 @@ namespace AgentStatus
                 return;
             }
 
-            if (!TryGetTaskbarRect(out RECT taskbarRect))
+            HWND taskbarWindow = PInvoke.FindWindow("Shell_TrayWnd", null);
+            if (taskbarWindow.IsNull || !PInvoke.GetWindowRect(taskbarWindow, out RECT taskbarRect))
             {
                 ScheduleExplorerRecovery(ExplorerRetryDelay);
                 return;
             }
 
+            // Keep the window as a top-level WS_EX_TOPMOST overlay rather
+            // than parenting it into Shell_TrayWnd. Parenting is cleaner
+            // visually (no z-order fight) but couples our lifetime to
+            // Explorer/taskbar — display-topology changes destroy our HWND
+            // and can destabilize Explorer itself. The overlay approach is
+            // resilient to monitor connect/disconnect at the cost of a
+            // small z-order watchdog (RestoreTopmostIfCovered).
             WINDOW_STYLE oldStyle = (WINDOW_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
             WINDOW_STYLE overlayStyle = (oldStyle | WINDOW_STYLE.WS_POPUP) & ~WINDOW_STYLE.WS_CHILD;
             overlayStyle &= ~(WINDOW_STYLE.WS_CAPTION | WINDOW_STYLE.WS_THICKFRAME);
             PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)overlayStyle);
 
-            // Keep the window as a top-level tool window overlay instead of
-            // parenting it into Explorer's taskbar HWND, which can deadlock or
-            // destabilize Explorer during display topology changes.
-            // WS_EX_NOACTIVATE prevents taskbar interactions from yanking
-            // activation away from us and the shell from re-stacking us below
-            // Shell_TrayWnd. WS_EX_TOOLWINDOW keeps us out of Alt-Tab.
             WINDOW_EX_STYLE exStyle = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
             exStyle |= WINDOW_EX_STYLE.WS_EX_TOOLWINDOW | WINDOW_EX_STYLE.WS_EX_NOACTIVATE | WINDOW_EX_STYLE.WS_EX_TOPMOST;
             exStyle &= ~WINDOW_EX_STYLE.WS_EX_APPWINDOW;
             PInvoke.SetWindowLong(thisWindow, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
             PInvoke.SetParent(thisWindow, HWND.Null);
 
-            RECT newWindowRect = new();
-            newWindowRect.left = taskbarRect.left;
-            newWindowRect.top = taskbarRect.top;
-            newWindowRect.right = newWindowRect.left + (taskbarRect.right - taskbarRect.left);
-            newWindowRect.bottom = taskbarRect.bottom;
             PInvoke.SetWindowRgn(_hwnd, HRGN.Null, true);
 
             PInvoke.SetWindowPos(thisWindow,
                          HWND_TOPMOST,
-                         newWindowRect.left,
-                         newWindowRect.top,
-                         newWindowRect.Width,
-                         newWindowRect.Height,
+                         taskbarRect.left,
+                         taskbarRect.top,
+                         taskbarRect.Width,
+                         taskbarRect.Height,
                          SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
 
+            _overlayInitialized = true;
             ClipWindow().ConfigureAwait(false);
         }
+
+        private bool _overlayInitialized;
 
         private static bool TryGetTaskbarRect(out RECT taskbarRect)
         {
@@ -437,15 +436,6 @@ namespace AgentStatus
                     height48px,
                     SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
-            else
-            {
-                // Re-assert topmost without moving so taskbar interactions
-                // don't push us below Shell_TrayWnd.
-                PInvoke.SetWindowPos(_hwnd,
-                    HWND_TOPMOST,
-                    0, 0, 0, 0,
-                    SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
-            }
 
             FrameworkElement clipToElement = MainContent;
             if (clipToElement.ActualWidth <= 0)
@@ -469,11 +459,6 @@ namespace AgentStatus
             {
                 PInvoke.DeleteObject(hrgn);
             }
-
-            // Taskbar layout changes are a strong signal that the shell has
-            // restacked its own topmost windows above us. Re-rank ourselves
-            // back to the top of the topmost group so we stay visible.
-            RestoreTopmostIfCovered();
         }
 
         private void PrepareForClose()
@@ -491,44 +476,134 @@ namespace AgentStatus
             RestoreOriginalWindowProc();
         }
 
+        // ---------- Reactive z-order management ----------
+
         [DllImport("user32.dll")]
-        private static extern HWND GetWindow(HWND hwnd, uint uCmd);
+        private static extern HWND WindowFromPoint(POINT pt);
+
+        [DllImport("user32.dll")]
+        private static extern HWND GetAncestor(HWND hWnd, uint flag);
+
+        private const uint GA_ROOT = 2;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
 
         /// <summary>
-        /// If another window is sitting above us in the topmost group (the
-        /// Win11 taskbar's tray windows do this whenever the user interacts
-        /// with the taskbar), re-rank ourselves back to the top.
+        /// If our overlay rect is being painted over by another topmost
+        /// window, slide ourselves above the offender. Verifies coverage
+        /// via WindowFromPoint so we don't restack when the reorder didn't
+        /// actually affect us.
         /// </summary>
-        /// <remarks>
-        /// SetWindowPos(HWND_TOPMOST,...) is documented as a no-op when
-        /// WS_EX_TOPMOST is already set on the window, so it cannot push us
-        /// above sibling topmost windows. The HWND_NOTOPMOST -> HWND_TOPMOST
-        /// sequence demotes us out of the topmost band and re-inserts us at
-        /// the top, forcing the OS to recompute our z-order.
-        /// </remarks>
         private void RestoreTopmostIfCovered()
         {
-            if (_isClosing || _hwnd == HWND.Null)
+            if (_isClosing || _hwnd == HWND.Null || !_overlayInitialized)
             {
                 return;
             }
 
-            // Anything above us means we're covered (since we're WS_EX_TOPMOST,
-            // only other topmost windows can sit above us).
-            if (GetWindow(_hwnd, GW_HWNDPREV) == HWND.Null)
+            // Self-check: if we somehow lost WS_EX_TOPMOST (e.g. an earlier
+            // SetWindowPos demoted us, or another process meddled), re-apply
+            // the overlay setup — that's the only safe way back into the band.
+            if (!IsTopmost(_hwnd))
+            {
+                MoveToTaskbar();
+                return;
+            }
+
+            if (!PInvoke.GetWindowRect(_hwnd, out RECT ourRect) ||
+                ourRect.right <= ourRect.left || ourRect.bottom <= ourRect.top)
+            {
+                return;
+            }
+
+            // Sample several points across our rect and ask the OS what the
+            // top-most window at each point is. If any sample isn't us (or
+            // a descendant of us), we're covered.
+            HWND offender = HWND.Null;
+            POINT[] samples =
+            {
+                new POINT { X = ourRect.left + 4,                       Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
+                new POINT { X = ourRect.right - 4,                      Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
+                new POINT { X = ourRect.left + (ourRect.right - ourRect.left) / 2, Y = ourRect.top + (ourRect.bottom - ourRect.top) / 2 },
+            };
+
+            foreach (POINT pt in samples)
+            {
+                HWND atPoint = WindowFromPoint(pt);
+                if (atPoint == HWND.Null)
+                {
+                    continue;
+                }
+
+                HWND root = GetAncestor(atPoint, GA_ROOT);
+                if (root == _hwnd)
+                {
+                    continue;
+                }
+
+                offender = root;
+                break;
+            }
+
+            if (offender == HWND.Null)
+            {
+                return;
+            }
+
+            // Only react if the offender is itself topmost. If it isn't, we
+            // would already be above it (we're WS_EX_TOPMOST) and any apparent
+            // coverage is a stale read; restacking against a non-topmost
+            // window would demote us out of the topmost band.
+            if (!IsTopmost(offender))
+            {
+                return;
+            }
+
+            // Slide above the offender by inserting ourselves after whatever
+            // currently sits directly above it. The candidate must also be
+            // topmost: passing HWND_TOP or a non-topmost sibling would strip
+            // our WS_EX_TOPMOST style and demote us underneath Shell_TrayWnd
+            // (i.e. hide our app entirely).
+            //
+            // If no topmost sibling exists above the offender, the offender is
+            // currently the highest-ranked topmost window — there is no safe
+            // in-band move to get above it. Skip; shell typically rebalances
+            // on its own and we'll get another reorder event with better
+            // candidates. This is preferable to flicker or to hiding ourselves.
+            HWND insertAfter = GetWindow(offender, GW_HWNDPREV);
+            if (insertAfter == HWND.Null || !IsTopmost(insertAfter))
             {
                 return;
             }
 
             PInvoke.SetWindowPos(_hwnd,
-                HWND_NOTOPMOST,
+                insertAfter,
                 0, 0, 0, 0,
-                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
-            PInvoke.SetWindowPos(_hwnd,
-                HWND_TOPMOST,
-                0, 0, 0, 0,
-                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+                SET_WINDOW_POS_FLAGS.SWP_NOMOVE
+                    | SET_WINDOW_POS_FLAGS.SWP_NOSIZE
+                    | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
+                    | SET_WINDOW_POS_FLAGS.SWP_NOSENDCHANGING
+                    | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
         }
+
+        private static bool IsTopmost(HWND hwnd)
+        {
+            if (hwnd == HWND.Null)
+            {
+                return false;
+            }
+
+            nint exStyle = PInvoke.GetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            return ((uint)exStyle & (uint)WINDOW_EX_STYLE.WS_EX_TOPMOST) != 0;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern HWND GetWindow(HWND hwnd, uint uCmd);
 
         private void RestoreOriginalWindowProc()
         {
