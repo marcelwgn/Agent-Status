@@ -1,6 +1,6 @@
 using Microsoft.CommandPalette.Extensions;
 
-namespace AgentStatus.GitHubCopilot;
+namespace AgentStatusTaskbar.GitHubCopilot;
 
 /// <summary>
 /// Copilot-specific CommandViewModel that exposes the underlying command

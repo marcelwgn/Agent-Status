@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <UserControl
-    x:Class="AgentStatus.BandsItemsControl"
+    x:Class="AgentStatusTaskbar.BandsItemsControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
-    xmlns:controls="using:AgentStatus.Controls"
+    xmlns:controls="using:AgentStatusTaskbar.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:AgentStatus"
+    xmlns:local="using:AgentStatusTaskbar"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     SizeChanged="OnSizeChanged"
     mc:Ignorable="d">

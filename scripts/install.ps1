@@ -28,8 +28,8 @@ Write-Host "Certificate installed to Trusted People store." -ForegroundColor Gre
 # --- Detect architecture ---
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
 switch ($arch) {
-    'X64'   { $msixName = 'AgentStatus_x64.msix' }
-    'Arm64' { $msixName = 'AgentStatus_ARM64.msix' }
+    'X64'   { $msixName = 'AgentStatus.Taskbar_x64.msix' }
+    'Arm64' { $msixName = 'AgentStatus.Taskbar_ARM64.msix' }
     default {
         Write-Error "Unsupported architecture: $arch"
         exit 1

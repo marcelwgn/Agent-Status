@@ -1,6 +1,6 @@
 using Microsoft.CommandPalette.Extensions;
 
-namespace AgentStatus.ClaudeCode;
+namespace AgentStatusTaskbar.ClaudeCode;
 
 /// <summary>
 /// Claude Code-specific CommandViewModel that exposes the underlying command

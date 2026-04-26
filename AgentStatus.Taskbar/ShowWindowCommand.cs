@@ -4,7 +4,7 @@ using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 using Windows.Win32.Foundation;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 /// <summary>
 /// Command that brings an agent session's host application window to the foreground.

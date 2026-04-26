@@ -3,7 +3,7 @@ using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 public static class Program
 {

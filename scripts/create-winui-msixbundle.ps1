@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AgentStatus'
-$csproj = Join-Path $projectDir 'AgentStatus.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus.Taskbar'
+$csproj = Join-Path $projectDir 'AgentStatus.Taskbar.csproj'
 $manifestPath = Join-Path $projectDir 'Package.appxmanifest'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
@@ -145,7 +145,7 @@ foreach ($arch in $architectures) {
     }
 
     # Pack into MSIX (unsigned)
-    $msixPath = Join-Path $msixDir "AgentStatus_$label.msix"
+    $msixPath = Join-Path $msixDir "AgentStatus.Taskbar_$label.msix"
     Write-Host "Packing $label MSIX..." -ForegroundColor Cyan
     & $makeAppx pack /d $layoutDir /p $msixPath /o
     if ($LASTEXITCODE -ne 0) {
@@ -170,7 +170,7 @@ $firstLayout = Get-ChildItem $tempRoot -Directory -Filter 'layout_*' | Select-Ob
 [xml]$layoutManifest = Get-Content (Join-Path $firstLayout.FullName 'AppxManifest.xml')
 $bundleVersion = $layoutManifest.Package.Identity.Version
 
-$bundlePath = Join-Path $publishDir 'AgentStatus.msixbundle'
+$bundlePath = Join-Path $publishDir 'AgentStatus.Taskbar.msixbundle'
 & $makeAppx bundle /d $msixDir /p $bundlePath /bv $bundleVersion /o
 if ($LASTEXITCODE -ne 0) {
     Write-Error "MakeAppx bundle failed."

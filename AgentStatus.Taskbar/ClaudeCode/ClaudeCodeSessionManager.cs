@@ -4,16 +4,16 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Microsoft.UI.Dispatching;
 
-namespace AgentStatus.ClaudeCode;
+namespace AgentStatusTaskbar.ClaudeCode;
 
 /// <summary>
-/// UI adapter for <see cref="Core.ClaudeCode.ClaudeCodeSessionManager"/>.
+/// UI adapter for <see cref="AgentStatus.Core.ClaudeCode.ClaudeCodeSessionManager"/>.
 /// Bridges the Core session manager's <see cref="AISessionInfo"/> collection
 /// to <see cref="CommandViewModel"/> for the WinUI taskbar.
 /// </summary>
 public sealed class ClaudeCodeUISessionManager : IUISessionManager
 {
-    private readonly Core.ClaudeCode.ClaudeCodeSessionManager _coreManager;
+    private readonly AgentStatus.Core.ClaudeCode.ClaudeCodeSessionManager _coreManager;
     private readonly DispatcherQueue _queue;
     private readonly Dictionary<AISessionInfo, ClaudeCodeCommandViewModel> _vmMap = [];
 
@@ -22,7 +22,7 @@ public sealed class ClaudeCodeUISessionManager : IUISessionManager
     public ClaudeCodeUISessionManager(DispatcherQueue queue)
     {
         _queue = queue;
-        _coreManager = new Core.ClaudeCode.ClaudeCodeSessionManager();
+        _coreManager = new AgentStatus.Core.ClaudeCode.ClaudeCodeSessionManager();
         _coreManager.Sessions.CollectionChanged += (_, _) => _queue.TryEnqueue(SyncViewModels);
     }
 

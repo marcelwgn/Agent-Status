@@ -8,7 +8,7 @@ using Windows.Win32.Foundation;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 using Windows.Win32.UI.WindowsAndMessaging;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 /// <summary>
 /// Command that selects a specific choice in an agent session's interactive prompt.

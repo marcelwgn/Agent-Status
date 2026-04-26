@@ -1,17 +1,32 @@
-# Agent Status - Taskbar Tray
+# Agent Status
 
 > Initial idea by [@niels9001](https://github.com/niels9001).
 
-A lightweight Windows app that surfaces the status of your AI coding agents (GitHub Copilot CLI, Claude Code, and more) directly in the taskbar tray, so you can see at a glance when an agent is working, waiting on input, or done.
+A lightweight Windows project that surfaces the status of your AI coding agents
+(GitHub Copilot CLI, Claude Code, and more) so you can see at a glance when an
+agent is working, waiting on input, or done.
 
-> **Note:** Parts of this project were "vibe coded" with the help of AI coding agents. Expect the occasional rough edge — bug reports and PRs are welcome.
+> **Note:** Parts of this project were "vibe coded" with the help of AI coding
+> agents. Expect the occasional rough edge — bug reports and PRs are welcome.
+
+## What's in this repo
+
+The repo produces two independent Windows apps that share the same session
+detection logic from `AgentStatus.Core`:
+
+- **`AgentStatus.Taskbar`** — a WinUI 3 desktop app that runs in the system
+  tray and (optionally) shows agent status in a taskbar band. Distributed as
+  the `AgentStatus.Taskbar` MSIX bundle.
+- **`AgentStatus.CmdPal`** — a [Microsoft Command Palette](https://learn.microsoft.com/windows/powertoys/command-palette/overview)
+  extension that adds an Agent Status dock band to the Command Palette.
+  Distributed as the `AgentStatus.CmdPal` MSIX bundle.
 
 ## Features
 
-- Live status for active agent sessions in the system tray
+- Live status for active agent sessions
 - Support for GitHub Copilot CLI and Claude Code sessions
-- Optional taskbar band integration
-- Command Palette extension for [Microsoft Command Palette](https://learn.microsoft.com/windows/powertoys/command-palette/overview) (`AgentStatus.CmdPal`)
+- Tray icon and optional taskbar band integration (taskbar app)
+- Command Palette dock integration (CmdPal extension)
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 /// <summary>
 /// UI-level session manager interface. Wraps Core session discovery

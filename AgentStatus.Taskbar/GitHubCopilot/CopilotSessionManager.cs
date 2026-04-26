@@ -4,16 +4,16 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Microsoft.UI.Dispatching;
 
-namespace AgentStatus.GitHubCopilot;
+namespace AgentStatusTaskbar.GitHubCopilot;
 
 /// <summary>
-/// UI adapter for <see cref="Core.GitHubCopilot.CopilotSessionManager"/>.
+/// UI adapter for <see cref="AgentStatus.Core.GitHubCopilot.CopilotSessionManager"/>.
 /// Bridges the Core session manager's <see cref="AISessionInfo"/> collection
 /// to <see cref="CommandViewModel"/> for the WinUI taskbar.
 /// </summary>
 public sealed class CopilotUISessionManager : IUISessionManager
 {
-    private readonly Core.GitHubCopilot.CopilotSessionManager _coreManager;
+    private readonly AgentStatus.Core.GitHubCopilot.CopilotSessionManager _coreManager;
     private readonly DispatcherQueue _queue;
     private readonly Dictionary<AISessionInfo, CopilotCommandViewModel> _vmMap = [];
 
@@ -22,7 +22,7 @@ public sealed class CopilotUISessionManager : IUISessionManager
     public CopilotUISessionManager(DispatcherQueue queue)
     {
         _queue = queue;
-        _coreManager = new Core.GitHubCopilot.CopilotSessionManager();
+        _coreManager = new AgentStatus.Core.GitHubCopilot.CopilotSessionManager();
         _coreManager.Sessions.CollectionChanged += (_, _) => _queue.TryEnqueue(SyncViewModels);
     }
 

@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.Messaging;
-using AgentStatus;
+using AgentStatusTaskbar;
 using Microsoft.UI.Xaml;
 using System.Runtime.InteropServices;
 using Windows.Win32;
@@ -8,7 +8,7 @@ using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
 using WinRT.Interop;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 internal sealed partial class TrayIconService
 {
@@ -134,7 +134,7 @@ internal sealed partial class TrayIconService
 
     private DestroyIconSafeHandle GetAppIconHandle()
     {
-        string exePath = Path.Combine(AppContext.BaseDirectory, "AgentStatus.exe");
+        string exePath = Path.Combine(AppContext.BaseDirectory, "AgentStatus.Taskbar.exe");
         PInvoke.ExtractIconEx(exePath, 0, out DestroyIconSafeHandle largeIcon, out _, 1);
         return largeIcon;
     }

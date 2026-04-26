@@ -7,7 +7,7 @@ using Microsoft.UI.Dispatching;
 using System.Collections.ObjectModel;
 using Windows.Foundation;
 
-namespace AgentStatus
+namespace AgentStatusTaskbar
 {
     interface ITaskbarItem
     {

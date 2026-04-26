@@ -5,7 +5,7 @@ using System.Diagnostics;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 using Microsoft.UI.Dispatching;
 
-namespace AgentStatus;
+namespace AgentStatusTaskbar;
 
 /// <summary>
 /// A generic taskbar band that shows running agent sessions from registered

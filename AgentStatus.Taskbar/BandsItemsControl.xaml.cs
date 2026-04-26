@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 
-namespace AgentStatus
+namespace AgentStatusTaskbar
 {
     public sealed partial class BandsItemsControl : UserControl, INotifyPropertyChanged
     {

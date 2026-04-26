@@ -2,7 +2,7 @@ using AgentStatus.Core.Common;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace AgentStatus.Controls;
+namespace AgentStatusTaskbar.Controls;
 
 public sealed partial class SessionFlyout : UserControl
 {

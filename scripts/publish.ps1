@@ -17,8 +17,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Definition)
-$projectDir = Join-Path $repoRoot 'AgentStatus'
-$csproj = Join-Path $projectDir 'AgentStatus.csproj'
+$projectDir = Join-Path $repoRoot 'AgentStatus.Taskbar'
+$csproj = Join-Path $projectDir 'AgentStatus.Taskbar.csproj'
 $imagesDir = Join-Path $projectDir 'Images'
 $publishDir = Join-Path $repoRoot 'publish'
 $publisher = 'CN=marcelwagner'
@@ -131,7 +131,7 @@ foreach ($arch in $architectures) {
     }
 
     # Package as MSIX
-    $msixPath = Join-Path $publishDir "AgentStatus_$label.msix"
+    $msixPath = Join-Path $publishDir "AgentStatus.Taskbar_$label.msix"
     Write-Host "Packaging $label MSIX..." -ForegroundColor Cyan
     & $makeAppx pack /d $appxDir /p $msixPath /o
     if ($LASTEXITCODE -ne 0) {

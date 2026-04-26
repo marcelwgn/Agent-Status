@@ -11,7 +11,7 @@ using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.UI.WindowsAndMessaging;
 using WinUIEx;
 
-namespace AgentStatus
+namespace AgentStatusTaskbar
 {
     public sealed partial class MainWindow : WindowEx,
         IRecipient<TaskbarRestartMessage>,
