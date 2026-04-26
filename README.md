@@ -4,6 +4,8 @@
 
 A lightweight Windows app that surfaces the status of your AI coding agents (GitHub Copilot CLI, Claude Code, and more) directly in the taskbar tray, so you can see at a glance when an agent is working, waiting on input, or done.
 
+> **Note:** Parts of this project were "vibe coded" with the help of AI coding agents. Expect the occasional rough edge — bug reports and PRs are welcome.
+
 ## Features
 
 - Live status for active agent sessions in the system tray
