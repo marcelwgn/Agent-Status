@@ -367,3 +367,4 @@ FodyWeavers.xsd
 
 # Store identity script (contains store-specific values)
 scripts/set-cmdpal-store-identity.ps1
+scripts/set-winui-store-identity.ps1
